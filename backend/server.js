@@ -15,6 +15,16 @@ mongoose.connect(process.env.MONGO_URI)
     console.log("Connected DB:", mongoose.connection.name);
   });
 
+const rateLimit = require('express-rate-limit');
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // max 100 requests per IP
+  message: { error: 'Too many requests, slow down' }
+});
+
+app.use(limiter);
+
 // Public routes — no token needed
 app.use('/api/auth', require('./routes/auth'));
 
