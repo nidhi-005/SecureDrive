@@ -1,0 +1,16 @@
+{
+  "name": "secure-drive-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for SecureDrive",
+  "main": "src/test-crypto.html",
+  "scripts": {
+    "dev": "live-server src --port=5173",
+    "start": "live-server src --port=5173"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "live-server": "^1.2.1"
+  }
+}

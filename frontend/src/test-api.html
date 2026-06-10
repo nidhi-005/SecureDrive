@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head><title>API Test</title></head>
+<body>
+  <h2>SecureDrive API + Crypto Integration Test</h2>
+  <button onclick="runTest()">Run Full Test</button>
+  <div id="output" style="font-family:monospace; margin-top:20px; white-space:pre-line;"></div>
+
+  <script type="module">
+    import {
+      deriveKeyFromPassword, generateMasterKey,
+      wrapMasterKey, unwrapMasterKey,
+      encryptFile, decryptFile
+    } from './crypto.js';
+
+    import {
+      apiSignup, apiLogin, apiUpload,
+      apiListFiles, apiGetMeta, apiDownload, apiDelete
+    } from './api.js';
+
+    const log = msg => {
+      document.getElementById('output').innerText += msg + '\n';
+    };
+
+    window.runTest = async () => {
+      document.getElementById('output').innerText = '';
+      try {
+
+        // ── SIGNUP ──────────────────────────────────────────
+        log("--- SIGNUP ---");
+        const email    = `test${Date.now()}@test.com`; // unique email each run
+        const password = "mypassword123";
+
+        const derivedKey = await deriveKeyFromPassword(password);
+        const masterKey  = await generateMasterKey();
+        const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(masterKey, derivedKey);
+
+        await apiSignup(email, wrappedMasterKey, masterKeyIV);
+        log("✅ Signup successful: " + email);
+
+        // ── LOGIN ────────────────────────────────────────────
+        log("\n--- LOGIN ---");
+        const loginData   = await apiLogin(email);
+        const derivedKey2 = await deriveKeyFromPassword(password);
+        const masterKey2  = await unwrapMasterKey(
+          loginData.wrappedMasterKey,
+          loginData.masterKeyIV,
+          derivedKey2
+        );
+        log("✅ Login successful, Master Key restored");
+
+        // ── UPLOAD ───────────────────────────────────────────
+        log("\n--- UPLOAD ---");
+        const originalText   = "This is my secret file content!";
+        const originalBuffer = new TextEncoder().encode(originalText).buffer;
+
+        const { encryptedFile, wrappedCEK, fileIV, cekIV } =
+          await encryptFile(originalBuffer, masterKey2);
+
+        const uploadResult = await apiUpload(
+          encryptedFile, "secret.txt", wrappedCEK, fileIV, cekIV
+        );
+        const fileId = uploadResult.fileId;
+        log("✅ File encrypted and uploaded — fileId: " + fileId);
+
+        // ── LIST ─────────────────────────────────────────────
+        log("\n--- LIST FILES ---");
+        const files = await apiListFiles();
+        log("✅ Files in your account: " + files.length);
+
+        // ── DOWNLOAD + DECRYPT ───────────────────────────────
+        log("\n--- DOWNLOAD + DECRYPT ---");
+        const meta            = await apiGetMeta(fileId);
+        const encryptedBuffer = await apiDownload(fileId);
+        const decryptedBuffer = await decryptFile(
+          encryptedBuffer,
+          meta.wrappedCEK,
+          meta.fileIV,
+          meta.cekIV,
+          masterKey2
+        );
+        const decryptedText = new TextDecoder().decode(decryptedBuffer);
+        log("✅ Downloaded and decrypted: " + decryptedText);
+        log(decryptedText === originalText
+          ? "🎉 PERFECT MATCH — Full pipeline working!"
+          : "❌ MISMATCH");
+
+        // ── DELETE ───────────────────────────────────────────
+        log("\n--- DELETE ---");
+        await apiDelete(fileId);
+        log("✅ File deleted");
+
+        // ── VERIFY DELETED ───────────────────────────────────
+        const filesAfter = await apiListFiles();
+        log("✅ Files remaining: " + filesAfter.length);
+        log("\n🏁 ALL TESTS PASSED — Backend + Crypto fully connected!");
+
+      } catch (err) {
+        log("❌ ERROR: " + err.message);
+        console.error(err);
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureDrive — Login</title>
+  <link rel="stylesheet" href="css/auth.css">
+</head>
+<body>
+
+<div class="auth-box">
+  <span class="logo">Secure<span>Drive</span></span>
+  <h2>Welcome back</h2>
+  <p class="subtitle">Your files, encrypted before they leave your device.</p>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-login" onclick="switchTab('login')">Login</div>
+    <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</div>
+  </div>
+
+  <!-- Login form -->
+  <div id="login-form">
+    <label>Email</label>
+    <input type="email" id="login-email" placeholder="you@example.com">
+    <label>Password</label>
+    <input type="password" id="login-password" placeholder="Your password"
+           onkeydown="if(event.key==='Enter') handleLogin()">
+    <div class="error-msg" id="login-error"></div>
+    <button class="btn-primary" id="login-btn" onclick="handleLogin()">Login</button>
+  </div>
+
+  <!-- Signup form -->
+  <div id="signup-form" style="display:none">
+    <label>Email</label>
+    <input type="email" id="signup-email" placeholder="you@example.com">
+    <label>Password</label>
+    <input type="password" id="signup-password" placeholder="Min. 8 characters"
+           onkeydown="if(event.key==='Enter') handleSignup()">
+    <div class="error-msg" id="signup-error"></div>
+    <button class="btn-primary" id="signup-btn" onclick="handleSignup()">Create Account</button>
+  </div>
+
+  <div class="auth-note">
+    🔒 Your password never leaves your device.<br>
+    All encryption uses AES-256-GCM via Web Crypto API.
+  </div>
+</div>
+
+<script type="module" src="js/auth.js"></script>
+</body>
+</html>

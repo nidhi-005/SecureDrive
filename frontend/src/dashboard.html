@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureDrive — Dashboard</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+<nav>
+  <div class="logo">Secure<span>Drive</span></div>
+  <div class="nav-right">
+    <span id="user-email"></span>
+    <button id="logout-btn" onclick="handleLogout()">Logout</button>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- Upload zone -->
+  <div class="upload-zone" id="upload-zone"
+       onclick="document.getElementById('file-input').click()"
+       ondragover="handleDragOver(event)"
+       ondragleave="handleDragLeave(event)"
+       ondrop="handleDrop(event)">
+    <input type="file" id="file-input" onchange="handleFileSelect(event)">
+    <div class="upload-icon">🔐</div>
+    <h3>Drop a file to encrypt and upload</h3>
+    <p>Click to browse · Encrypted in your browser before upload · Max 50MB</p>
+  </div>
+
+  <!-- Upload progress -->
+  <div id="upload-status"></div>
+
+  <!-- Files list -->
+  <div class="section-header">
+    <h3>Your Encrypted Files</h3>
+  </div>
+  <div id="files-list">
+    <div class="empty-state">
+      <div class="empty-icon">🔒</div>
+      Loading your files...
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

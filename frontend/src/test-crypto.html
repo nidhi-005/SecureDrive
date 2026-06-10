@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Crypto Test</title>
+</head>
+<body>
+  <h2>SecureDrive Crypto Test</h2>
+  <button onclick="runTest()">Run Test</button>
+  <div id="output" style="font-family: monospace; margin-top: 20px; white-space: pre-line;"></div>
+
+  <script type="module">
+    import {
+      deriveKeyFromPassword,
+      generateMasterKey,
+      wrapMasterKey,
+      unwrapMasterKey,
+      encryptFile,
+      decryptFile
+    } from './crypto.js';
+
+    const log = (msg) => {
+      document.getElementById('output').innerText += msg + '\n';
+      console.log(msg);
+    };
+
+    window.runTest = async () => {
+      document.getElementById('output').innerText = '';
+      try {
+        log("Starting crypto test...\n");
+
+        // ── SIGNUP SIMULATION ──
+        const password   = "mypassword123";
+        const derivedKey = await deriveKeyFromPassword(password);
+        const masterKey  = await generateMasterKey();
+        const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(masterKey, derivedKey);
+
+        log("✅ Step 1: Password → derived key (PBKDF2)");
+        log("✅ Step 2: Master Key generated");
+        log("✅ Step 3: Master Key wrapped (encrypted)");
+        log("   wrappedMasterKey: " + wrappedMasterKey.substring(0, 40) + "...");
+        log("   masterKeyIV: " + masterKeyIV + "\n");
+
+        // ── LOGIN SIMULATION ──
+        const derivedKey2 = await deriveKeyFromPassword(password);
+        const masterKey2  = await unwrapMasterKey(wrappedMasterKey, masterKeyIV, derivedKey2);
+        log("✅ Step 4: Login — Master Key unwrapped successfully\n");
+
+        // ── FILE ENCRYPT ──
+        const originalText   = "Hello SecureDrive! This is a secret file.";
+        const originalBuffer = new TextEncoder().encode(originalText).buffer;
+
+        const { encryptedFile, wrappedCEK, fileIV, cekIV } = 
+          await encryptFile(originalBuffer, masterKey2);
+
+        log("✅ Step 5: File encrypted");
+        log("   Original size:  " + originalBuffer.byteLength + " bytes");
+        log("   Encrypted size: " + encryptedFile.byteLength + " bytes");
+        log("   wrappedCEK: " + wrappedCEK.substring(0, 40) + "...\n");
+
+        // ── FILE DECRYPT ──
+        const decryptedBuffer = await decryptFile(
+          encryptedFile, wrappedCEK, fileIV, cekIV, masterKey2
+        );
+        const decryptedText = new TextDecoder().decode(decryptedBuffer);
+
+        log("✅ Step 6: File decrypted");
+        log("   Decrypted text: " + decryptedText + "\n");
+
+        if (decryptedText === originalText) {
+          log("🎉 PERFECT MATCH — End-to-end encryption working!");
+        } else {
+          log("❌ MISMATCH — something went wrong");
+        }
+
+        // ── WRONG PASSWORD TEST ──
+        log("\n--- Testing wrong password (should fail) ---");
+        try {
+          const wrongDerivedKey = await deriveKeyFromPassword("wrongpassword");
+          await unwrapMasterKey(wrappedMasterKey, masterKeyIV, wrongDerivedKey);
+          log("❌ Wrong password accepted — this is a bug!");
+        } catch (e) {
+          log("✅ Wrong password correctly rejected — security working!");
+        }
+
+      } catch (err) {
+        log("❌ ERROR: " + err.message);
+        console.error(err);
+      }
+    };
+  </script>
+</body>
+</html>
