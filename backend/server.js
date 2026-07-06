@@ -6,7 +6,10 @@ const auth     = require('./middleware/auth');
 
 const app = express();
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
+  origin: [
+    'http://localhost:5173',
+    'https://securedrive.vercel.app'  // your actual Vercel URL
+  ],
   credentials: true
 }));
 app.use(express.json());

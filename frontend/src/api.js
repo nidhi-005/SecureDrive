@@ -5,7 +5,7 @@
 // This module handles sending/receiving from the server.
 // ============================================================
 
-const BASE_URL = 'http://localhost:3000/api';
+const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
 
 // ─────────────────────────────────────────────────────────────
 // Helper: get stored JWT token from sessionStorage
