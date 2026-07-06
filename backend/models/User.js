@@ -7,6 +7,9 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
+  passwordHash: {
+    type: String, required: true  // ← ADD THIS
+  },
   wrappedMasterKey: { type: String, required: true },
   masterKeyIV:      { type: String, required: true },
   createdAt:        { type: Date, default: Date.now }

@@ -34,37 +34,30 @@ function authHeader() {
 // Sends email + wrapped master key to backend
 // ─────────────────────────────────────────────────────────────
 
-async function apiSignup(email, wrappedMasterKey, masterKeyIV) {
+// Signup — now sends password too
+async function apiSignup(email, password, wrappedMasterKey, masterKeyIV) {
   const res = await fetch(`${BASE_URL}/auth/signup`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, wrappedMasterKey, masterKeyIV })
+    body:    JSON.stringify({ email, password, wrappedMasterKey, masterKeyIV })
   });
-
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Signup failed');
-
   saveToken(data.token);
   return data;
 }
 
-// ─────────────────────────────────────────────────────────────
-// AUTH — Login
-// Gets wrapped master key back from server
-// ─────────────────────────────────────────────────────────────
-
-async function apiLogin(email) {
+// Login — now sends password too
+async function apiLogin(email, password) {
   const res = await fetch(`${BASE_URL}/auth/login`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email })
+    body:    JSON.stringify({ email, password })
   });
-
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
-
   saveToken(data.token);
-  return data; // contains wrappedMasterKey and masterKeyIV
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────

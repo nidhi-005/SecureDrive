@@ -43,7 +43,7 @@ window.handleSignup = async () => {
     const mk         = await generateMasterKey();
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
-    await apiSignup(email, wrappedMasterKey, masterKeyIV);
+    await apiSignup(email, password, wrappedMasterKey, masterKeyIV);
 
     // Store master key for dashboard — sessionStorage cleared on tab close
     sessionStorage.setItem('masterKeyTemp', JSON.stringify(
@@ -72,7 +72,7 @@ window.handleLogin = async () => {
   btn.textContent = 'Logging in...';
 
   try {
-    const data       = await apiLogin(email);
+    const data       = await apiLogin(email, password);
     const derivedKey = await deriveKeyFromPassword(password);
     const mk         = await unwrapMasterKey(
       data.wrappedMasterKey,

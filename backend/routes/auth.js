@@ -4,18 +4,26 @@ const jwt     = require('jsonwebtoken');
 const User    = require('../models/User');
 
 // SIGNUP
+const bcrypt = require('bcryptjs');
+
+// SIGNUP
 router.post('/signup', async (req, res) => {
   try {
-    console.log("BODY:", req.body);
-    const { email, wrappedMasterKey, masterKeyIV } = req.body;
-    console.log("EMAIL:", email);
+    const { email, password, wrappedMasterKey, masterKeyIV } = req.body;
+
+    if (!email || !password || !wrappedMasterKey || !masterKeyIV) {
+      return res.status(400).json({ error: 'All fields required' });
+    }
+
     const existing = await User.findOne({ email });
-    console.log("EXISTING:", existing);
     if (existing) {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
-    const user = new User({ email, wrappedMasterKey, masterKeyIV });
+    // Hash the password — bcrypt is one-way, server cannot reverse it
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const user = new User({ email, passwordHash, wrappedMasterKey, masterKeyIV });
     await user.save();
 
     const token = jwt.sign(
@@ -26,30 +34,29 @@ router.post('/signup', async (req, res) => {
 
     res.status(201).json({ token, email: user.email });
   } catch (err) {
-    console.error('Signup error:', err);
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: Object.keys(err.errors).reduce((acc, key) => {
-          acc[key] = err.errors[key].message;
-          return acc;
-        }, {})
-      });
-    }
+    console.error(err);
     res.status(500).json({ error: 'Signup failed' });
   }
 });
 
-// LOGIN
+// LOGIN — now verifies password
 router.post('/login', async (req, res) => {
   try {
-    const { email } = req.body;
-    console.log("BODY:", req.body);
-    console.log("EMAIL:", email);
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
+    }
+
     const user = await User.findOne({ email });
-    console.log("User:", user);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Compare submitted password against stored hash
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const token = jwt.sign(
@@ -60,7 +67,7 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      email: user.email,
+      email:            user.email,
       wrappedMasterKey: user.wrappedMasterKey,
       masterKeyIV:      user.masterKeyIV
     });
