@@ -1,41 +1,36 @@
-const express = require('express');
-const router  = express.Router();
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
-const File    = require('../models/File');
+const express  = require('express');
+const router   = express.Router();
+const multer   = require('multer');
+const { Readable } = require('stream');
+const File     = require('../models/File');
+const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
 
-// Configure multer — where to store uploaded (encrypted) files
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../uploads'));
-  },
-  filename: (req, file, cb) => {
-    // Random filename — original name stored in DB, not exposed here
-    const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueName);
-  }
-});
-
+// ── Multer uses memory storage now (not disk)
+// File goes to RAM temporarily, then straight to S3
 const upload = multer({
-  storage,
-  limits: { fileSize: 50 * 1024 * 1024 } // 50MB max — DoS protection
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 50 * 1024 * 1024 } // 50MB — same as before
 });
 
 // ─── UPLOAD ──────────────────────────────────────────
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     const { originalName, wrappedCEK, fileIV, cekIV } = req.body;
-    console.log(req.file);
-    console.log(req.body);
+
     if (!req.file) {
       return res.status(400).json({ error: 'No file received' });
     }
 
+    // Generate unique S3 key — same idea as your random filename before
+    const s3Key = `${req.user.userId}/${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+    // Upload buffer to S3 instead of saving to disk
+    await uploadToS3(req.file.buffer, s3Key);
+
     const newFile = new File({
-      owner:        req.user.userId,  // from JWT middleware — links file to user
+      owner:        req.user.userId,
       originalName,
-      storagePath:  req.file.filename,
+      storagePath:  s3Key,      // S3 key stored here instead of local filename
       wrappedCEK,
       fileIV,
       cekIV,
@@ -51,26 +46,26 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// ─── LIST FILES ───────────────────────────────────────
+// ─── LIST FILES ─────────────────────────────────────
+// Exactly the same as before — no S3 involved here
 router.get('/', async (req, res) => {
   try {
-    // Only returns files owned by the logged-in user
     const files = await File.find({ owner: req.user.userId })
-      .select('-storagePath') // don't expose internal storage paths
+      .select('-storagePath')
       .sort({ uploadedAt: -1 });
-
     res.json(files);
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch files' });
   }
 });
 
-// ─── GET FILE METADATA (for decryption) ──────────────
+// ─── GET FILE METADATA ───────────────────────────────
+// Exactly the same as before
 router.get('/:fileId/meta', async (req, res) => {
   try {
     const file = await File.findOne({
       _id:   req.params.fileId,
-      owner: req.user.userId  // ownership check — can't fetch someone else's metadata
+      owner: req.user.userId
     });
 
     if (!file) {
@@ -88,50 +83,55 @@ router.get('/:fileId/meta', async (req, res) => {
   }
 });
 
-// ─── DOWNLOAD (encrypted file bytes) ─────────────────
+// ─── DOWNLOAD ────────────────────────────────────────
+// Was: res.download(filePath)
+// Now: stream from S3
 router.get('/:fileId/download', async (req, res) => {
   try {
     const file = await File.findOne({
       _id:   req.params.fileId,
-      owner: req.user.userId  // ownership check
+      owner: req.user.userId
     });
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    const filePath = path.join(__dirname, '../uploads', file.storagePath);
+    const s3Body = await downloadFromS3(file.storagePath);
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'File data missing' });
+    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+
+    const chunks = [];
+    for await (const chunk of s3Body) {
+      chunks.push(chunk);
     }
+    res.send(Buffer.concat(chunks));
 
-    res.download(filePath, file.originalName);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Download failed' });
   }
 });
 
-// ─── DELETE ───────────────────────────────────────────
+// ─── DELETE ──────────────────────────────────────────
+// Was: fs.unlinkSync(filePath)
+// Now: deleteFromS3(key)
 router.delete('/:fileId', async (req, res) => {
   try {
     const file = await File.findOne({
       _id:   req.params.fileId,
-      owner: req.user.userId  // ownership check
+      owner: req.user.userId
     });
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Delete from disk
-    const filePath = path.join(__dirname, '../uploads', file.storagePath);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
-    // Delete from DB
+    // Delete from S3 then from MongoDB
+    await deleteFromS3(file.storagePath);
     await File.findByIdAndDelete(req.params.fileId);
+
     res.json({ message: 'File deleted' });
 
   } catch (err) {
