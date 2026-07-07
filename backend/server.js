@@ -34,6 +34,10 @@ app.use(limiter);
 // Public routes — no token needed
 app.use('/api/auth', require('./routes/auth'));
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Protected routes — token required for everything below
 app.use('/api/files', auth, require('./routes/files'));
 
