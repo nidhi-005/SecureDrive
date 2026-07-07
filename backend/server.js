@@ -8,7 +8,7 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost:5173',
-    'https://securedrive.vercel.app'  // your actual Vercel URL
+    'https://securedriv3.netlify.app'  // your actual Vercel URL
   ],
   credentials: true
 }));
