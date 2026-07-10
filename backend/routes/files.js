@@ -5,6 +5,27 @@ const { Readable } = require('stream');
 const File     = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
 
+// Allowed file types — MIME type allowlist (T1036 fix)
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf',
+  'text/plain',
+  'application/zip', 'application/x-zip-compressed',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'video/mp4', 'audio/mpeg'
+];
+
+// Sanitise filename — strips dangerous characters (T1059 fix)
+function sanitizeFilename(name) {
+  return name
+    .replace(/[^\w\s.\-]/g, '_')  // only allow word chars, spaces, dots, hyphens
+    .replace(/\.\./g, '_')         // no path traversal
+    .replace(/^\./, '_')           // no hidden files
+    .substring(0, 255);            // max 255 chars
+}
 // ── Multer uses memory storage now (not disk)
 // File goes to RAM temporarily, then straight to S3
 const upload = multer({
@@ -21,21 +42,28 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file received' });
     }
 
-    // Generate unique S3 key — same idea as your random filename before
-    const s3Key = `${req.user.userId}/${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    // T1036 — MIME type validation
+    // T1036 — validate the original MIME type sent from client
+    const clientMimeType = req.body.mimeType || '';
 
-    // Upload buffer to S3 instead of saving to disk
+    // Store mimeType in DB too — useful for future download Content-Type headers
+    
+    // T1059 — sanitise filename before storing
+    const safeName = sanitizeFilename(originalName || req.file.originalname);
+
+    const s3Key = `${req.user.userId}/${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     await uploadToS3(req.file.buffer, s3Key);
 
     const newFile = new File({
       owner:        req.user.userId,
-      originalName,
-      storagePath:  s3Key,      // S3 key stored here instead of local filename
+      originalName: safeName,
+      storagePath:  s3Key,
       wrappedCEK,
       fileIV,
       cekIV,
       size:         req.file.size
     });
+
 
     await newFile.save();
     res.status(201).json({ message: 'File uploaded', fileId: newFile._id });

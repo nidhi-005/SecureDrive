@@ -6,6 +6,7 @@ import {
 } from '../crypto.js';
 
 import { apiSignup, apiLogin } from '../api.js';
+import { setMasterKey } from './keyStore.js';
 
 // ── Tab switch ─────────────────────────────────────────────
 window.switchTab = (tab) => {
@@ -44,12 +45,12 @@ window.handleSignup = async () => {
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
     await apiSignup(email, password, wrappedMasterKey, masterKeyIV);
-
+    setMasterKey(mk, email);
     // Store master key for dashboard — sessionStorage cleared on tab close
-    sessionStorage.setItem('masterKeyTemp', JSON.stringify(
-      await crypto.subtle.exportKey('raw', mk)
-        .then(buf => Array.from(new Uint8Array(buf)))
-    ));
+    // sessionStorage.setItem('masterKeyTemp', JSON.stringify(
+    //   await crypto.subtle.exportKey('raw', mk)
+    //     .then(buf => Array.from(new Uint8Array(buf)))
+    // ));
 
     window.location.href = 'dashboard.html';
   } catch (err) {
@@ -80,12 +81,13 @@ window.handleLogin = async () => {
       derivedKey
     );
 
+    setMasterKey(mk, email);
     // Store master key bytes temporarily to pass to dashboard
-    sessionStorage.setItem('masterKeyTemp', JSON.stringify(
-      await crypto.subtle.exportKey('raw', mk)
-        .then(buf => Array.from(new Uint8Array(buf)))
-    ));
-    sessionStorage.setItem('userEmail', email);
+    // sessionStorage.setItem('masterKeyTemp', JSON.stringify(
+    //   await crypto.subtle.exportKey('raw', mk)
+    //     .then(buf => Array.from(new Uint8Array(buf)))
+    // ));
+    // sessionStorage.setItem('userEmail', email);
 
     window.location.href = 'dashboard.html';
   } catch (err) {

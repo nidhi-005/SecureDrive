@@ -3,32 +3,38 @@ import {
   apiLogout, apiUpload, apiListFiles,
   apiGetMeta, apiDownload, apiDelete
 } from '../api.js';
+import { getMasterKey, getUserEmail, clearSession, isSessionActive } from './keyStore.js';
 
 // ── Restore Master Key from session ───────────────────────
 let masterKey = null;
 
-async function restoreMasterKey() {
-  const stored = sessionStorage.getItem('masterKeyTemp');
-  if (!stored) {
-    // Not logged in — send back to login
+// async function restoreMasterKey() {
+//   const stored = sessionStorage.getItem('masterKeyTemp');
+//   if (!stored) {
+//     // Not logged in — send back to login
+//     window.location.href = 'index.html';
+//     return;
+//   }
+
+//   const keyBytes = new Uint8Array(JSON.parse(stored));
+//   masterKey = await crypto.subtle.importKey(
+//     'raw', keyBytes,
+//     { name: 'AES-GCM' },
+//     true,
+//     ['wrapKey', 'unwrapKey']
+//   );
+// }
+
+// ── Init ───────────────────────────────────────────────────
+async function init() {
+  if (!isSessionActive()) {
+    // Key not in memory — session expired or direct navigation
+    // Send back to login
     window.location.href = 'index.html';
     return;
   }
 
-  const keyBytes = new Uint8Array(JSON.parse(stored));
-  masterKey = await crypto.subtle.importKey(
-    'raw', keyBytes,
-    { name: 'AES-GCM' },
-    true,
-    ['wrapKey', 'unwrapKey']
-  );
-}
-
-// ── Init ───────────────────────────────────────────────────
-async function init() {
-  await restoreMasterKey();
-  const email = sessionStorage.getItem('userEmail') || '';
-  document.getElementById('user-email').textContent = email;
+  document.getElementById('user-email').textContent = getUserEmail() || '';
   await loadFiles();
 }
 
@@ -43,7 +49,7 @@ function showToast(msg, type = 'success') {
 
 // ── Logout ─────────────────────────────────────────────────
 window.handleLogout = () => {
-  sessionStorage.clear();
+  clearSession();
   apiLogout();
 };
 
@@ -71,6 +77,9 @@ window.handleFileSelect = (e) => {
 
 // ── UPLOAD ─────────────────────────────────────────────────
 async function uploadFile(file) {
+  const masterKey = getMasterKey();
+  if (!masterKey) return; // redirected to login by getMasterKey
+
   const status = document.getElementById('upload-status');
   status.style.display = 'block';
 
@@ -82,7 +91,14 @@ async function uploadFile(file) {
       await encryptFile(buffer, masterKey);
 
     status.textContent = '☁️ Uploading encrypted file...';
-    await apiUpload(encryptedFile, file.name, wrappedCEK, fileIV, cekIV);
+    await apiUpload(
+      encryptedFile,
+      file.name,
+      wrappedCEK,
+      fileIV,
+      cekIV,
+      file.type || 'application/octet-stream'  // ← pass real MIME type
+    );
 
     status.textContent = '✅ Upload complete!';
     setTimeout(() => status.style.display = 'none', 2000);
@@ -92,7 +108,7 @@ async function uploadFile(file) {
     document.getElementById('file-input').value = '';
   } catch (err) {
     status.textContent = '❌ ' + err.message;
-    showToast('Upload failed', 'error');
+    showToast(err.message, 'error');
   }
 }
 
@@ -117,7 +133,7 @@ async function loadFiles() {
         <div class="file-left">
           <div class="file-icon">${getFileIcon(f.originalName)}</div>
           <div>
-            <div class="file-name">${f.originalName}</div>
+            <div class="file-name">${escapeHtml(f.originalName)}</div>
             <div class="file-meta">
               ${formatSize(f.size)} &nbsp;·&nbsp; ${formatDate(f.uploadedAt)}
             </div>
@@ -125,7 +141,7 @@ async function loadFiles() {
         </div>
         <div class="file-actions">
           <button class="btn-download"
-            onclick="downloadFile('${f._id}', '${f.originalName}')">
+            onclick="downloadFile('${f._id}', '${escapeHtml(f.originalName)}')">
             ↓ Download
           </button>
           <button class="btn-delete" onclick="deleteFile('${f._id}')">
@@ -144,6 +160,9 @@ async function loadFiles() {
 
 // ── DOWNLOAD + DECRYPT ─────────────────────────────────────
 window.downloadFile = async (fileId, fileName) => {
+  const masterKey = getMasterKey();
+  if (!masterKey) return;
+
   showToast('Decrypting...');
   try {
     const meta            = await apiGetMeta(fileId);
@@ -183,6 +202,14 @@ window.deleteFile = async (fileId) => {
 };
 
 // ── Helpers ────────────────────────────────────────────────
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 function getFileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
   const map = {

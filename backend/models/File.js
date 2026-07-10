@@ -7,7 +7,6 @@ const fileSchema = new mongoose.Schema({
     required: true
   },
   originalName: { type: String, required: true },
-  storagePath:  { type: String, required: true },
   wrappedCEK:   { type: String, required: true },
   fileIV:       { type: String, required: true },
   cekIV:        { type: String, required: true },
