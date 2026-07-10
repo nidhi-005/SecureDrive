@@ -198,7 +198,7 @@ SecureDrive/
 ### Backend Setup
 
 ```bash
-git clone https://github.com/your-username/SecureDrive
+git clone https://github.com/nidhi-005/SecureDrive
 cd SecureDrive/backend
 npm install
 ```
