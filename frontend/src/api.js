@@ -5,7 +5,7 @@
 // This module handles sending/receiving from the server.
 // ============================================================
 
-const BASE_URL = "https://securedrive-mmls.onrender.com/api";
+const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
 
 // ─────────────────────────────────────────────────────────────
 // Helper: get stored JWT token from sessionStorage
@@ -74,19 +74,21 @@ function apiLogout() {
 // Sends encrypted file + crypto metadata to backend
 // ─────────────────────────────────────────────────────────────
 
-async function apiUpload(encryptedBuffer, originalName, wrappedCEK, fileIV, cekIV, mimeType) {
+async function apiUpload(encryptedBuffer, originalName, wrappedCEK, fileIV, cekIV) {
+  // Must use FormData — sending binary file + text fields together
   const formData = new FormData();
+
+  // Convert ArrayBuffer to Blob to send as file
   const blob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
   formData.append('file',         blob, originalName);
   formData.append('originalName', originalName);
-  formData.append('mimeType',     mimeType);          // ← add this
   formData.append('wrappedCEK',   wrappedCEK);
   formData.append('fileIV',       fileIV);
   formData.append('cekIV',        cekIV);
 
   const res = await fetch(`${BASE_URL}/files/upload`, {
     method:  'POST',
-    headers: authHeader(),
+    headers: authHeader(), // JWT token — no Content-Type, FormData sets it
     body:    formData
   });
 

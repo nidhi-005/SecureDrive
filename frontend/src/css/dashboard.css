@@ -172,3 +172,25 @@ nav {
 
 #toast.success { border-color: #2d6a4f; color: #6ee7b7; }
 #toast.error   { border-color: #7f1d1d; color: #f87171; }
+
+/* Auth screen centering */
+#auth-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0f1117;
+}
+
+/* Dashboard screen */
+#app-screen {
+  background: #0f1117;
+  min-height: calc(100vh - 60px);
+}
+
+/* Remove body flex from auth.css — add this override */
+body {
+  margin: 0;
+  padding: 0;
+  background: #0f1117;
+}

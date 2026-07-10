@@ -36,6 +36,8 @@ const upload = multer({
 // ─── UPLOAD ──────────────────────────────────────────
 router.post('/upload', upload.single('file'), async (req, res) => {
   try {
+    console.log('File received:', req.file?.originalname, req.file?.size);
+    console.log('S3 bucket:', process.env.AWS_BUCKET_NAME);
     const { originalName, wrappedCEK, fileIV, cekIV } = req.body;
 
     if (!req.file) {

@@ -5,28 +5,9 @@ import {
 } from '../api.js';
 import { getMasterKey, getUserEmail, clearSession, isSessionActive } from './keyStore.js';
 
-// ── Restore Master Key from session ───────────────────────
-let masterKey = null;
-
-// async function restoreMasterKey() {
-//   const stored = sessionStorage.getItem('masterKeyTemp');
-//   if (!stored) {
-//     // Not logged in — send back to login
-//     window.location.href = 'index.html';
-//     return;
-//   }
-
-//   const keyBytes = new Uint8Array(JSON.parse(stored));
-//   masterKey = await crypto.subtle.importKey(
-//     'raw', keyBytes,
-//     { name: 'AES-GCM' },
-//     true,
-//     ['wrapKey', 'unwrapKey']
-//   );
-// }
-
 // ── Init ───────────────────────────────────────────────────
 async function init() {
+  // Check session is active — key must be in keyStore
   if (!isSessionActive()) {
     // Key not in memory — session expired or direct navigation
     // Send back to login
@@ -41,16 +22,16 @@ async function init() {
 // ── Toast ──────────────────────────────────────────────────
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
-  t.textContent  = msg;
-  t.className    = type;
+  t.textContent   = msg;
+  t.className     = type;
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 3000);
 }
 
 // ── Logout ─────────────────────────────────────────────────
 window.handleLogout = () => {
-  clearSession();
-  apiLogout();
+  clearSession(); // clears key from module memory
+  apiLogout();    // clears JWT from sessionStorage, redirects to login
 };
 
 // ── Drag and drop ──────────────────────────────────────────
@@ -58,18 +39,15 @@ window.handleDragOver = (e) => {
   e.preventDefault();
   document.getElementById('upload-zone').classList.add('dragover');
 };
-
 window.handleDragLeave = () => {
   document.getElementById('upload-zone').classList.remove('dragover');
 };
-
 window.handleDrop = (e) => {
   e.preventDefault();
   document.getElementById('upload-zone').classList.remove('dragover');
   const file = e.dataTransfer.files[0];
   if (file) uploadFile(file);
 };
-
 window.handleFileSelect = (e) => {
   const file = e.target.files[0];
   if (file) uploadFile(file);
@@ -91,14 +69,7 @@ async function uploadFile(file) {
       await encryptFile(buffer, masterKey);
 
     status.textContent = '☁️ Uploading encrypted file...';
-    await apiUpload(
-      encryptedFile,
-      file.name,
-      wrappedCEK,
-      fileIV,
-      cekIV,
-      file.type || 'application/octet-stream'  // ← pass real MIME type
-    );
+    await apiUpload(encryptedFile, file.name, wrappedCEK, fileIV, cekIV);
 
     status.textContent = '✅ Upload complete!';
     setTimeout(() => status.style.display = 'none', 2000);
@@ -108,17 +79,15 @@ async function uploadFile(file) {
     document.getElementById('file-input').value = '';
   } catch (err) {
     status.textContent = '❌ ' + err.message;
-    showToast(err.message, 'error');
+    showToast('Upload failed', 'error');
   }
 }
 
 // ── LOAD FILES ─────────────────────────────────────────────
 async function loadFiles() {
   const list = document.getElementById('files-list');
-
   try {
     const files = await apiListFiles();
-
     if (files.length === 0) {
       list.innerHTML = `
         <div class="empty-state">
@@ -127,7 +96,6 @@ async function loadFiles() {
         </div>`;
       return;
     }
-
     list.innerHTML = files.map(f => `
       <div class="file-card" id="card-${f._id}">
         <div class="file-left">
@@ -150,7 +118,6 @@ async function loadFiles() {
         </div>
       </div>
     `).join('');
-
   } catch (err) {
     list.innerHTML = `<div style="color:#f87171;font-size:13px;padding:20px 0">
       Failed to load files: ${err.message}
@@ -158,7 +125,7 @@ async function loadFiles() {
   }
 }
 
-// ── DOWNLOAD + DECRYPT ─────────────────────────────────────
+// ── DOWNLOAD ───────────────────────────────────────────────
 window.downloadFile = async (fileId, fileName) => {
   const masterKey = getMasterKey();
   if (!masterKey) return;
@@ -168,13 +135,8 @@ window.downloadFile = async (fileId, fileName) => {
     const meta            = await apiGetMeta(fileId);
     const encryptedBuffer = await apiDownload(fileId);
     const decryptedBuffer = await decryptFile(
-      encryptedBuffer,
-      meta.wrappedCEK,
-      meta.fileIV,
-      meta.cekIV,
-      masterKey
+      encryptedBuffer, meta.wrappedCEK, meta.fileIV, meta.cekIV, masterKey
     );
-
     const blob = new Blob([decryptedBuffer]);
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -182,7 +144,6 @@ window.downloadFile = async (fileId, fileName) => {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-
     showToast('File decrypted and downloaded!');
   } catch (err) {
     showToast('Download failed: ' + err.message, 'error');
@@ -202,6 +163,7 @@ window.deleteFile = async (fileId) => {
 };
 
 // ── Helpers ────────────────────────────────────────────────
+// T1059 fix — escape HTML before rendering filenames
 function escapeHtml(str) {
   return str
     .replace(/&/g, '&amp;')
@@ -210,6 +172,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
 function getFileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
   const map = {
@@ -222,8 +185,8 @@ function getFileIcon(name) {
 
 function formatSize(bytes) {
   if (!bytes) return '—';
-  if (bytes < 1024)       return bytes + ' B';
-  if (bytes < 1024*1024)  return (bytes/1024).toFixed(1) + ' KB';
+  if (bytes < 1024)      return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/(1024*1024)).toFixed(1) + ' MB';
 }
 
@@ -233,5 +196,4 @@ function formatDate(dateStr) {
   });
 }
 
-// Start
 init();

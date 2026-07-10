@@ -8,7 +8,7 @@ import {
 import { apiSignup, apiLogin } from '../api.js';
 import { setMasterKey } from './keyStore.js';
 
-// ── Tab switch ─────────────────────────────────────────────
+// ── Tab switch ──────────────────────────────────────────────
 window.switchTab = (tab) => {
   document.getElementById('tab-login').classList.toggle('active', tab === 'login');
   document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
@@ -18,12 +18,24 @@ window.switchTab = (tab) => {
 
 function showError(id, msg) {
   const el = document.getElementById(id);
-  el.textContent    = msg;
-  el.style.display  = 'block';
+  el.textContent   = msg;
+  el.style.display = 'block';
 }
 
 function clearError(id) {
   document.getElementById(id).style.display = 'none';
+}
+
+function attachEnterHandler(inputId, handler) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handler();
+    }
+  });
 }
 
 // ── SIGNUP ──────────────────────────────────────────────────
@@ -32,8 +44,8 @@ window.handleSignup = async () => {
   const email    = document.getElementById('signup-email').value.trim();
   const password = document.getElementById('signup-password').value;
 
-  if (!email || !password)   return showError('signup-error', 'Please fill in all fields');
-  if (password.length < 8)   return showError('signup-error', 'Password must be at least 8 characters');
+  if (!email || !password)  return showError('signup-error', 'Please fill in all fields');
+  if (password.length < 8)  return showError('signup-error', 'Password must be at least 8 characters');
 
   const btn = document.getElementById('signup-btn');
   btn.disabled    = true;
@@ -45,12 +57,10 @@ window.handleSignup = async () => {
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
     await apiSignup(email, password, wrappedMasterKey, masterKeyIV);
+
+    // Store in keyStore — NOT sessionStorage
+    // mk is a non-extractable CryptoKey — JS cannot read raw bytes
     setMasterKey(mk, email);
-    // Store master key for dashboard — sessionStorage cleared on tab close
-    // sessionStorage.setItem('masterKeyTemp', JSON.stringify(
-    //   await crypto.subtle.exportKey('raw', mk)
-    //     .then(buf => Array.from(new Uint8Array(buf)))
-    // ));
 
     window.location.href = 'dashboard.html';
   } catch (err) {
@@ -81,13 +91,8 @@ window.handleLogin = async () => {
       derivedKey
     );
 
+    // Store in keyStore — NOT sessionStorage
     setMasterKey(mk, email);
-    // Store master key bytes temporarily to pass to dashboard
-    // sessionStorage.setItem('masterKeyTemp', JSON.stringify(
-    //   await crypto.subtle.exportKey('raw', mk)
-    //     .then(buf => Array.from(new Uint8Array(buf)))
-    // ));
-    // sessionStorage.setItem('userEmail', email);
 
     window.location.href = 'dashboard.html';
   } catch (err) {
