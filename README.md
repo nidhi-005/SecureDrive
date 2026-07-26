@@ -1,12 +1,12 @@
-# 🔐 SecureDrive
+# SecureDrive
 
 > **Privacy-preserving cloud storage — your files are encrypted before they leave your device.**
 
-SecureDrive is a web-native cloud storage application where all encryption and decryption happens entirely in your browser. The server stores only encrypted bytes — even a complete server breach exposes nothing meaningful. Built at IIT Dharwad as a Bachelor's Thesis Project.
+SecureDrive is a web-native cloud storage application where all encryption and decryption happens entirely in your browser. The server stores only encrypted bytes — even a complete server breach exposes nothing meaningful.
 
 ---
 
-## 🌐 Live Deployment
+## Live Deployment
 
 | Service | URL |
 |---------|-----|
@@ -18,14 +18,14 @@ SecureDrive is a web-native cloud storage application where all encryption and d
 
 ---
 
-## ⚠️ Branch Status
+## Branch Status
 
 | Branch | Purpose | Status |
 |--------|---------|--------|
 | `production` | Active development — current working version | ✅ Live |
 | `main` | Stable release branch | ⏳ Pending merge from `production` |
 
-> All current development happens on the `production` branch. The `main` branch will be updated once the BTP research layer (blockchain audit trail) is complete and tested.
+> All current development happens on the `production` branch. The `main` branch will be updated once the blockchain audit trail is complete and tested.
 
 ---
 
@@ -33,7 +33,7 @@ SecureDrive is a web-native cloud storage application where all encryption and d
 
 ### The Core Idea
 
-Most cloud storage (Google Drive, Dropbox) encrypts your files **on their servers** — meaning they hold the keys and can technically read your data. SecureDrive flips this: files are encrypted **before they leave your browser**, using keys that only you control.
+Most cloud storage services (Google Drive, Dropbox) encrypt your files **on their servers** — meaning they hold the keys and can technically read your data. SecureDrive flips this: files are encrypted **before they leave your browser**, using keys that only you control.
 
 ### Three-Layer Key Hierarchy
 
@@ -122,7 +122,7 @@ This project has been formally analysed using:
 
 ### Partial Mitigations
 
-- **T1498 / A09 (DDoS + Audit Logging):** Application-level rate limiting active. Network-level DDoS protection (Cloudflare) planned on custom domain acquisition. Structured audit logging planned via blockchain audit trail (BTP research phase).
+- **T1498 / A09 (DDoS + Audit Logging):** Application-level rate limiting active. Network-level DDoS protection (Cloudflare) planned on custom domain acquisition. Structured audit logging planned via blockchain audit trail.
 
 ---
 
@@ -248,7 +248,7 @@ All `/api/files/*` routes require `Authorization: Bearer <token>` header.
 
 ---
 
-## Planned Research Extensions (BTP Phase 2)
+## Planned Research Extensions
 
 - **Blockchain-anchored audit trail** — every file access event hashed and anchored to Ethereum Sepolia testnet. Users can independently verify access history without trusting the server. (Raghuveer Verma, Aug–Dec 2026)
 - **Penetration testing** — OWASP ZAP against deployed system (Aug–Dec 2026)
@@ -261,22 +261,13 @@ All `/api/files/*` routes require `Authorization: Bearer <token>` header.
 
 | Document | Description |
 |----------|-------------|
-| `SecureDrive_Literature_Survey_v2.docx` | Comparative analysis of Cryptomator, Proton Drive, Filen |
-| `SecureDrive_Security_Analysis.docx` | MITRE ATT&CK + OWASP Top 10:2025 threat analysis |
-| `SecureDrive_BTP_Response.docx` | Responses to supervisor feedback |
+| `Literature_Survey.docx` | Comparative analysis of Cryptomator, Proton Drive, Filen |
+| `Threat_Analysis.pdf` | MITRE ATT&CK + OWASP Top 10:2025 threat analysis |
 
 ---
 
 ## Authors
 
 **Yashaswini L** — IIT Dharwad, CSE (`cs23bt060@iitdh.ac.in`)
+
 **Raghuveer Verma** — IIT Dharwad, CSE
-
-*BTP Project under Prof. Siba Narayan Swain*
-*Department of Computer Science and Engineering, IIT Dharwad*
-
----
-
-## License
-
-MIT License — see `LICENSE` for details.
