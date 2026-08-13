@@ -5,14 +5,29 @@ const mongoose = require('mongoose');
 const auth     = require('./middleware/auth');
 
 const app = express();
-app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    'https://6a7dcc4cb1224e0008655323--securedriv3.netlify.app/'  // your actual Vercel URL
-  ],
-  credentials: true
-}));
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedPatterns = [
+      /^http:\/\/localhost:\d+$/,
+      /^http:\/\/127\.0\.0\.1:\d+$/,
+      /^https:\/\/securedriv3\.netlify\.app$/,
+      /^https:\/\/.*--securedriv3\.netlify\.app$/
+    ];
+
+    if (!origin || allowedPatterns.some((pattern) => pattern.test(origin))) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
