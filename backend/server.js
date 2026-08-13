@@ -9,7 +9,7 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'https://securedriv3.netlify.app'  // your actual Vercel URL
+    'https://6a7dcc4cb1224e0008655323--securedriv3.netlify.app/'  // your actual Vercel URL
   ],
   credentials: true
 }));
