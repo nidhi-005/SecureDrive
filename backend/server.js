@@ -11,7 +11,7 @@ const corsOptions = {
       /^http:\/\/localhost:\d+$/,
       /^http:\/\/127\.0\.0\.1:\d+$/,
       /^https:\/\/securedriv3\.netlify\.app$/,
-      /^https:\/\/.*--securedriv3\.netlify\.app$/
+      /^https:\/\/.*--securedriv3\.netlify\.app$/,
     ];
 
     if (!origin || allowedPatterns.some((pattern) => pattern.test(origin))) {
