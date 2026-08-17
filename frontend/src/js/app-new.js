@@ -1,24 +1,24 @@
 import {
-  decryptFile,
-  deriveKeyFromPassword,
-  encryptFile,
-  generateMasterKey,
-  unwrapMasterKey,
-  wrapMasterKey
+    decryptFile,
+    deriveKeyFromPassword,
+    encryptFile,
+    generateMasterKey,
+    unwrapMasterKey,
+    wrapMasterKey
 } from '../crypto.js';
 
 import {
-  apiDelete,
-  apiDownload,
-  apiGetMeta,
-  apiListFiles,
-  apiLoginFinish,
-  apiLoginStart,
-  apiLogout,
-  apiSignup,
-  apiUpload,
-  base64ToUint8Array,
-  uint8ArrayToBase64
+    apiDelete,
+    apiDownload,
+    apiGetMeta,
+    apiListFiles,
+    apiLoginFinish,
+    apiLoginStart,
+    apiLogout,
+    apiSignup,
+    apiUpload,
+    base64ToUint8Array,
+    uint8ArrayToBase64
 } from '../api.js';
 
 // ── Master Key lives here — in module memory

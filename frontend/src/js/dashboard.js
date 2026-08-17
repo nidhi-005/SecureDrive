@@ -1,9 +1,12 @@
-import { encryptFile, decryptFile } from '../crypto.js';
 import {
-  apiLogout, apiUpload, apiListFiles,
-  apiGetMeta, apiDownload, apiDelete
+    apiDelete,
+    apiDownload,
+    apiGetMeta,
+    apiListFiles,
+    apiLogout, apiUpload
 } from '../api.js';
-import { getMasterKey, getUserEmail, clearSession, isSessionActive } from './keyStore.js';
+import { decryptFile, encryptFile } from '../crypto.js';
+import { clearSession, getMasterKey, getUserEmail, isSessionActive } from './keyStore.js';
 
 // ── Init ───────────────────────────────────────────────────
 async function init() {
@@ -29,29 +32,32 @@ function showToast(msg, type = 'success') {
 }
 
 // ── Logout ─────────────────────────────────────────────────
-window.handleLogout = () => {
+function handleLogout() {
   clearSession(); // clears key from module memory
   apiLogout();    // clears JWT from sessionStorage, redirects to login
-};
+}
 
 // ── Drag and drop ──────────────────────────────────────────
-window.handleDragOver = (e) => {
+function handleDragOver(e) {
   e.preventDefault();
   document.getElementById('upload-zone').classList.add('dragover');
-};
-window.handleDragLeave = () => {
+}
+
+function handleDragLeave() {
   document.getElementById('upload-zone').classList.remove('dragover');
-};
-window.handleDrop = (e) => {
+}
+
+function handleDrop(e) {
   e.preventDefault();
   document.getElementById('upload-zone').classList.remove('dragover');
   const file = e.dataTransfer.files[0];
   if (file) uploadFile(file);
-};
-window.handleFileSelect = (e) => {
+}
+
+function handleFileSelect(e) {
   const file = e.target.files[0];
   if (file) uploadFile(file);
-};
+}
 
 // ── UPLOAD ─────────────────────────────────────────────────
 async function uploadFile(file) {
@@ -108,16 +114,18 @@ async function loadFiles() {
           </div>
         </div>
         <div class="file-actions">
-          <button class="btn-download"
-            onclick="downloadFile('${f._id}', '${escapeHtml(f.originalName)}')">
+          <button class="btn-download" data-file-id="${f._id}" data-file-name="${escapeHtml(f.originalName)}">
             ↓ Download
           </button>
-          <button class="btn-delete" onclick="deleteFile('${f._id}')">
+          <button class="btn-delete" data-file-id="${f._id}">
             Delete
           </button>
         </div>
       </div>
     `).join('');
+
+    // Attach event listeners to dynamically created buttons
+    attachFileListeners();
   } catch (err) {
     list.innerHTML = `<div style="color:#f87171;font-size:13px;padding:20px 0">
       Failed to load files: ${err.message}
@@ -126,7 +134,7 @@ async function loadFiles() {
 }
 
 // ── DOWNLOAD ───────────────────────────────────────────────
-window.downloadFile = async (fileId, fileName) => {
+async function downloadFile(fileId, fileName) {
   const masterKey = getMasterKey();
   if (!masterKey) return;
 
@@ -148,10 +156,10 @@ window.downloadFile = async (fileId, fileName) => {
   } catch (err) {
     showToast('Download failed: ' + err.message, 'error');
   }
-};
+}
 
 // ── DELETE ─────────────────────────────────────────────────
-window.deleteFile = async (fileId) => {
+async function deleteFile(fileId) {
   if (!confirm('Delete this file? This cannot be undone.')) return;
   try {
     await apiDelete(fileId);
@@ -160,7 +168,7 @@ window.deleteFile = async (fileId) => {
   } catch (err) {
     showToast('Delete failed', 'error');
   }
-};
+}
 
 // ── Helpers ────────────────────────────────────────────────
 // T1059 fix — escape HTML before rendering filenames
@@ -196,4 +204,62 @@ function formatDate(dateStr) {
   });
 }
 
-init();
+// ── Attach Event Listeners to Dynamic File Buttons ────────
+function attachFileListeners() {
+  // Download buttons
+  document.querySelectorAll('.btn-download').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const fileId = e.target.dataset.fileId;
+      const fileName = e.target.dataset.fileName;
+      downloadFile(fileId, fileName);
+    });
+  });
+
+  // Delete buttons
+  document.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const fileId = e.target.dataset.fileId;
+      deleteFile(fileId);
+    });
+  });
+}
+
+// ── Dashboard Initialization ───────────────────────────────
+function initDashboard() {
+  // Logout button
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+
+  // Upload zone
+  const uploadZone = document.getElementById('upload-zone');
+  const fileInput = document.getElementById('file-input');
+
+  if (uploadZone) {
+    // Click to select file
+    uploadZone.addEventListener('click', () => {
+      fileInput?.click();
+    });
+
+    // Drag and drop
+    uploadZone.addEventListener('dragover', handleDragOver);
+    uploadZone.addEventListener('dragleave', handleDragLeave);
+    uploadZone.addEventListener('drop', handleDrop);
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener('change', handleFileSelect);
+  }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    initDashboard();
+    init();
+  });
+} else {
+  initDashboard();
+  init();
+}

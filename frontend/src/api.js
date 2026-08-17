@@ -5,7 +5,8 @@
 // This module handles sending/receiving from the server.
 // ============================================================
 
-const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
+// const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
+const BASE_URL = 'http://127.0.0.1:3000/api'
 
 // ─────────────────────────────────────────────────────────────
 // Helper: get stored JWT token from sessionStorage
@@ -30,16 +31,37 @@ function authHeader() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// AUTH — Signup
-// Sends email + wrapped master key to backend
+// OPAQUE Helper: Convert Uint8Array to Base64
+// ─────────────────────────────────────────────────────────────
+function uint8ArrayToBase64(array) {
+  let binary = '';
+  const bytes = new Uint8Array(array);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// OPAQUE Helper: Convert Base64 to Uint8Array
+function base64ToUint8Array(str) {
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH — OPAQUE Signup
+// Uses OPAQUE protocol for password-less registration
 // ─────────────────────────────────────────────────────────────
 
-// Signup — now sends password too
-async function apiSignup(email, password, wrappedMasterKey, masterKeyIV) {
+async function apiSignup(email, clientRegisterInit, wrappedMasterKey, masterKeyIV) {
   const res = await fetch(`${BASE_URL}/auth/signup`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, password, wrappedMasterKey, masterKeyIV })
+    body:    JSON.stringify({ email, clientRegisterInit, wrappedMasterKey, masterKeyIV })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Signup failed');
@@ -47,15 +69,35 @@ async function apiSignup(email, password, wrappedMasterKey, masterKeyIV) {
   return data;
 }
 
-// Login — now sends password too
-async function apiLogin(email, password) {
+// ─────────────────────────────────────────────────────────────
+// AUTH — OPAQUE Login (Step 1)
+// Sends clientLoginInit to server, gets serverLoginResponse
+// ─────────────────────────────────────────────────────────────
+
+async function apiLoginStart(email, clientLoginInit) {
   const res = await fetch(`${BASE_URL}/auth/login`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, password })
+    body:    JSON.stringify({ email, clientLoginInit })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH — OPAQUE Login (Step 2)
+// Sends clientLoginFinish to complete authentication
+// ─────────────────────────────────────────────────────────────
+
+async function apiLoginFinish(email, clientLoginFinish, clientExportKey) {
+  const res = await fetch(`${BASE_URL}/auth/login-finish`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ email, clientLoginFinish, clientExportKey })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Login verification failed');
   saveToken(data.token);
   return data;
 }
@@ -164,13 +206,6 @@ function isLoggedIn() {
 }
 
 export {
-  apiSignup,
-  apiLogin,
-  apiLogout,
-  apiUpload,
-  apiListFiles,
-  apiGetMeta,
-  apiDownload,
-  apiDelete,
-  isLoggedIn
+  apiDelete, apiDownload, apiGetMeta, apiListFiles, apiLoginFinish, apiLoginStart, apiLogout, apiSignup, apiUpload, base64ToUint8Array, isLoggedIn, uint8ArrayToBase64
 };
+

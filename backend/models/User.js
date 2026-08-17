@@ -7,8 +7,10 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true
   },
-  passwordHash: {
-    type: String, required: true  // ← ADD THIS
+  // OPAQUE registration data stored instead of bcrypt hash
+  opaqueRegistrationRecord: {
+    type: String,
+    required: true  // Base64-encoded registration record
   },
   wrappedMasterKey: { type: String, required: true },
   masterKeyIV:      { type: String, required: true },

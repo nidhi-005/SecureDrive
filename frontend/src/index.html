@@ -14,7 +14,7 @@
   <div class="logo">Secure<span>Drive</span></div>
   <div class="nav-right">
     <span id="user-email"></span>
-    <button id="logout-btn" onclick="handleLogout()">Logout</button>
+    <button id="logout-btn">Logout</button>
   </div>
 </nav>
 
@@ -26,8 +26,8 @@
     <p class="subtitle">Your files, encrypted before they leave your device.</p>
 
     <div class="tabs">
-      <div class="tab active" id="tab-login" onclick="switchTab('login')">Login</div>
-      <div class="tab" id="tab-signup" onclick="switchTab('signup')">Sign Up</div>
+      <div class="tab active" id="tab-login">Login</div>
+      <div class="tab" id="tab-signup">Sign Up</div>
     </div>
 
     <div id="login-form">
@@ -36,7 +36,7 @@
       <label>Password</label>
       <input type="password" id="login-password" placeholder="Your password">
       <div class="error-msg" id="login-error"></div>
-      <button class="btn-primary" id="login-btn" onclick="handleLogin()">Login</button>
+      <button class="btn-primary" id="login-btn">Login</button>
     </div>
 
     <div id="signup-form" style="display:none">
@@ -45,7 +45,7 @@
       <label>Password</label>
       <input type="password" id="signup-password" placeholder="Min. 8 characters">
       <div class="error-msg" id="signup-error"></div>
-      <button class="btn-primary" id="signup-btn" onclick="handleSignup()">Create Account</button>
+      <button class="btn-primary" id="signup-btn">Create Account</button>
     </div>
 
     <div class="auth-note">
@@ -58,12 +58,8 @@
 <!-- ── DASHBOARD SCREEN (hidden until logged in) ── -->
 <div id="app-screen" style="display:none">
   <div class="container">
-    <div class="upload-zone" id="upload-zone"
-         onclick="document.getElementById('file-input').click()"
-         ondragover="handleDragOver(event)"
-         ondragleave="handleDragLeave(event)"
-         ondrop="handleDrop(event)">
-      <input type="file" id="file-input" onchange="handleFileSelect(event)">
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input">
       <div class="upload-icon">🔐</div>
       <h3>Drop a file to encrypt and upload</h3>
       <p>Click to browse · Encrypted in your browser before upload · Max 50MB</p>
