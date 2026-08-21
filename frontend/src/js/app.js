@@ -1,4 +1,11 @@
 import {
+  opaqueLoginFinish,
+  opaqueLoginStart,
+  opaqueRegistrationFinish,
+  opaqueRegistrationStart
+} from '../opaqueClient.js';
+
+import {
   decryptFile,
   deriveKeyFromPassword,
   encryptFile,
@@ -15,65 +22,15 @@ import {
   apiLoginFinish,
   apiLoginStart,
   apiLogout,
-  apiSignup,
-  apiUpload,
-  base64ToUint8Array,
-  uint8ArrayToBase64
+  apiSignupFinish,
+  apiSignupRequest,
+  apiUpload
 } from '../api.js';
 
 // ── Master Key lives here — in module memory
 // Never exported, never in sessionStorage
 // Cleared when tab closes
 let masterKey = null;
-
-// Simple OPAQUE-like implementation using Web Crypto API
-class OPAQUEClient {
-  constructor(password, username) {
-    this.password = password;
-    this.username = username;
-  }
-
-  async registerInit() {
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const usernameBytes = new TextEncoder().encode(this.username);
-    const combined = new Uint8Array(passwordBytes.length + usernameBytes.length);
-    combined.set(passwordBytes);
-    combined.set(usernameBytes, passwordBytes.length);
-    const hash = await crypto.subtle.digest('SHA-256', combined);
-    return new Uint8Array(hash);
-  }
-
-  async registerFinish(serverRegisterInitBytes) {
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const combined = new Uint8Array(passwordBytes.length + serverRegisterInitBytes.length);
-    combined.set(passwordBytes);
-    combined.set(serverRegisterInitBytes, passwordBytes.length);
-    return await crypto.subtle.digest('SHA-256', combined);
-  }
-
-  async loginInit() {
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const usernameBytes = new TextEncoder().encode(this.username);
-    const combined = new Uint8Array(passwordBytes.length + usernameBytes.length);
-    combined.set(passwordBytes);
-    combined.set(usernameBytes, passwordBytes.length);
-    const hash = await crypto.subtle.digest('SHA-256', combined);
-    return new Uint8Array(hash);
-  }
-
-  async loginFinish(serverLoginResponseBytes) {
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const combined = new Uint8Array(passwordBytes.length + serverLoginResponseBytes.length);
-    combined.set(passwordBytes);
-    combined.set(serverLoginResponseBytes, passwordBytes.length);
-    const clientFinish = await crypto.subtle.digest('SHA-256', combined);
-    const exportKey = await crypto.subtle.digest('SHA-256', clientFinish);
-    return {
-      clientLoginFinish: new Uint8Array(clientFinish),
-      clientExportKey: uint8ArrayToBase64(new Uint8Array(exportKey))
-    };
-  }
-}
 
 // ══════════════════════════════════════════
 // SCREEN SWITCHING
@@ -127,68 +84,70 @@ function attachEnterHandler(inputId, handler) {
 
 async function handleSignup() {
   clearError('signup-error');
-  const email    = document.getElementById('signup-email').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
   const password = document.getElementById('signup-password').value;
 
-  if (!email || !password)  return showError('signup-error', 'Please fill in all fields');
-  if (password.length < 8)  return showError('signup-error', 'Password must be at least 8 characters');
+  if (!email || !password) return showError('signup-error', 'Please fill in all fields');
+  if (password.length < 8) return showError('signup-error', 'Password must be at least 8 characters');
 
   const btn = document.getElementById('signup-btn');
-  btn.disabled    = true;
+  btn.disabled = true;
   btn.textContent = 'Creating account...';
 
   try {
-    const opaqueClient = new OPAQUEClient(password, email);
-    const clientRegisterInitBytes = await opaqueClient.registerInit();
-    const clientRegisterInit = uint8ArrayToBase64(clientRegisterInitBytes);
+    const { clientRegistrationState, registrationRequest } = await opaqueRegistrationStart(password);
+    const serverResponse = await apiSignupRequest(email, registrationRequest);
 
-    const derivedKey = await deriveKeyFromPassword(password);
-    const mk         = await generateMasterKey();
+    const registrationResult = await opaqueRegistrationFinish({
+      password,
+      clientRegistrationState,
+      registrationResponse: serverResponse.registrationResponse
+    });
+
+    const derivedKey = await deriveKeyFromPassword(registrationResult.exportKey);
+    const mk = await generateMasterKey();
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
-    const serverResponse = await apiSignup(email, clientRegisterInit, wrappedMasterKey, masterKeyIV);
-
-    const serverRegisterInitBytes = base64ToUint8Array(serverResponse.serverRegisterInit);
-    await opaqueClient.registerFinish(serverRegisterInitBytes);
+    await apiSignupFinish(email, registrationResult.registrationRecord, wrappedMasterKey, masterKeyIV);
 
     masterKey = mk;
     showToast('Account created!');
     showDashboard(email);
   } catch (err) {
     showError('signup-error', err.message);
-    btn.disabled    = false;
+    btn.disabled = false;
     btn.textContent = 'Create Account';
   }
 }
 
 async function handleLogin() {
   clearError('login-error');
-  const email    = document.getElementById('login-email').value.trim();
+  const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
 
   if (!email || !password) return showError('login-error', 'Please fill in all fields');
 
   const btn = document.getElementById('login-btn');
-  btn.disabled    = true;
+  btn.disabled = true;
   btn.textContent = 'Logging in...';
 
   try {
-    const opaqueClient = new OPAQUEClient(password, email);
+    const { clientLoginState, startLoginRequest } = await opaqueLoginStart(password);
+    const serverResponse = await apiLoginStart(email, startLoginRequest);
 
-    const clientLoginInitBytes = await opaqueClient.loginInit();
-    const clientLoginInit = uint8ArrayToBase64(clientLoginInitBytes);
+    const loginResult = await opaqueLoginFinish({
+      password,
+      clientLoginState,
+      loginResponse: serverResponse.loginResponse
+    });
 
-    const serverResponse = await apiLoginStart(email, clientLoginInit);
+    if (!loginResult) {
+      throw new Error('Invalid email or password');
+    }
 
-    const serverLoginResponseBytes = base64ToUint8Array(serverResponse.serverLoginResponse);
-    const { clientLoginFinish, clientExportKey } = await opaqueClient.loginFinish(
-      serverLoginResponseBytes
-    );
+    await apiLoginFinish(email, loginResult.finishLoginRequest);
 
-    const clientLoginFinishB64 = uint8ArrayToBase64(clientLoginFinish);
-    await apiLoginFinish(email, clientLoginFinishB64, clientExportKey);
-
-    const derivedKey = await deriveKeyFromPassword(password);
+    const derivedKey = await deriveKeyFromPassword(loginResult.exportKey);
     masterKey = await unwrapMasterKey(
       serverResponse.wrappedMasterKey,
       serverResponse.masterKeyIV,
@@ -199,7 +158,7 @@ async function handleLogin() {
     showDashboard(email);
   } catch (err) {
     showError('login-error', 'Invalid email or password');
-    btn.disabled    = false;
+    btn.disabled = false;
     btn.textContent = 'Login';
   }
 }

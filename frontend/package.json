@@ -2,15 +2,20 @@
   "name": "secure-drive-frontend",
   "version": "1.0.0",
   "description": "Frontend for SecureDrive",
-  "main": "src/test-crypto.html",
+  "type": "module",
   "scripts": {
-    "dev": "live-server src --port=5173",
-    "start": "live-server src --port=5173"
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "start": "vite --host 0.0.0.0 --port 5173"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "dependencies": {
+    "@serenity-kit/opaque": "^1.1.0"
+  },
   "devDependencies": {
-    "live-server": "^1.2.1"
+    "vite": "^5.4.10"
   }
 }

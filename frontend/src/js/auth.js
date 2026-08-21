@@ -1,3 +1,5 @@
+import * as opaque from '@serenity-kit/opaque';
+
 import {
   deriveKeyFromPassword,
   generateMasterKey,
@@ -8,86 +10,10 @@ import {
 import {
   apiLoginFinish,
   apiLoginStart,
-  apiSignup,
-  base64ToUint8Array,
-  uint8ArrayToBase64
+  apiSignupFinish,
+  apiSignupRequest
 } from '../api.js';
 import { setMasterKey } from './keyStore.js';
-
-// Simple OPAQUE-like implementation using Web Crypto API
-// In production, use a full OPAQUE library
-class OPAQUEClient {
-  constructor(password, username) {
-    this.password = password;
-    this.username = username;
-  }
-
-  // Client Registration Init - generates initial registration message
-  async registerInit() {
-    // For OPAQUE, we derive a key from password and create registration data
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const usernameBytes = new TextEncoder().encode(this.username);
-    
-    // Create deterministic registration init from password
-    const combined = new Uint8Array(passwordBytes.length + usernameBytes.length);
-    combined.set(passwordBytes);
-    combined.set(usernameBytes, passwordBytes.length);
-    
-    const hash = await crypto.subtle.digest('SHA-256', combined);
-    
-    // Simulate OPAQUE clientRegisterInit message
-    // In real OPAQUE, this would be the first step of the OPRF
-    return new Uint8Array(hash);
-  }
-
-  // Client Registration Finish - completes registration
-  async registerFinish(serverRegisterInitBytes) {
-    // In full OPAQUE, this would finalize the registration
-    // For now, return confirmation
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const combined = new Uint8Array(
-      passwordBytes.length + serverRegisterInitBytes.length
-    );
-    combined.set(passwordBytes);
-    combined.set(serverRegisterInitBytes, passwordBytes.length);
-    
-    return await crypto.subtle.digest('SHA-256', combined);
-  }
-
-  // Client Login Init - generates login attempt
-  async loginInit() {
-    // Similar to registration init
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const usernameBytes = new TextEncoder().encode(this.username);
-    
-    const combined = new Uint8Array(passwordBytes.length + usernameBytes.length);
-    combined.set(passwordBytes);
-    combined.set(usernameBytes, passwordBytes.length);
-    
-    const hash = await crypto.subtle.digest('SHA-256', combined);
-    return new Uint8Array(hash);
-  }
-
-  // Client Login Finish - completes authentication
-  async loginFinish(serverLoginResponseBytes) {
-    // Verify server response and generate proof
-    const passwordBytes = new TextEncoder().encode(this.password);
-    const combined = new Uint8Array(
-      passwordBytes.length + serverLoginResponseBytes.length
-    );
-    combined.set(passwordBytes);
-    combined.set(serverLoginResponseBytes, passwordBytes.length);
-    
-    const clientFinish = await crypto.subtle.digest('SHA-256', combined);
-    // Export key is used to prove possession of password
-    const exportKey = await crypto.subtle.digest('SHA-256', clientFinish);
-    
-    return {
-      clientLoginFinish: new Uint8Array(clientFinish),
-      clientExportKey: uint8ArrayToBase64(new Uint8Array(exportKey))
-    };
-  }
-}
 
 // ── Tab switch ──────────────────────────────────────────────
 function switchTab(tab) {
@@ -133,28 +59,23 @@ async function handleSignup() {
   btn.textContent = 'Creating account...';
 
   try {
-    // Initialize OPAQUE client
-    const opaqueClient = new OPAQUEClient(password, email);
-    
-    // Step 1: Generate client registration init (password never sent)
-    const clientRegisterInitBytes = await opaqueClient.registerInit();
-    const clientRegisterInit = uint8ArrayToBase64(clientRegisterInitBytes);
+    await opaque.ready;
+    const { clientRegistrationState, registrationRequest } = opaque.client.startRegistration({ password });
+    const serverResponse = await apiSignupRequest(email, registrationRequest);
 
-    // Prepare master key wrapping with password-derived key
-    const derivedKey = await deriveKeyFromPassword(password);
-    const mk         = await generateMasterKey();
+    const registrationResult = opaque.client.finishRegistration({
+      password,
+      clientRegistrationState,
+      registrationResponse: serverResponse.registrationResponse
+    });
+
+    const derivedKey = await deriveKeyFromPassword(registrationResult.exportKey);
+    const mk = await generateMasterKey();
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
-    // Step 2: Send registration init to server
-    const serverResponse = await apiSignup(email, clientRegisterInit, wrappedMasterKey, masterKeyIV);
+    await apiSignupFinish(email, registrationResult.registrationRecord, wrappedMasterKey, masterKeyIV);
 
-    // Step 3: Complete client registration with server response
-    const serverRegisterInitBytes = base64ToUint8Array(serverResponse.serverRegisterInit);
-    await opaqueClient.registerFinish(serverRegisterInitBytes);
-
-    // Store in keyStore — NOT sessionStorage
     setMasterKey(mk, email);
-
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('signup-error', err.message);
@@ -176,37 +97,30 @@ async function handleLogin() {
   btn.textContent = 'Logging in...';
 
   try {
-    // Initialize OPAQUE client (password never sent to server)
-    const opaqueClient = new OPAQUEClient(password, email);
+    await opaque.ready;
+    const { clientLoginState, startLoginRequest } = opaque.client.startLogin({ password });
+    const serverResponse = await apiLoginStart(email, startLoginRequest);
 
-    // Step 1: Generate client login init
-    const clientLoginInitBytes = await opaqueClient.loginInit();
-    const clientLoginInit = uint8ArrayToBase64(clientLoginInitBytes);
+    const loginResult = opaque.client.finishLogin({
+      password,
+      clientLoginState,
+      loginResponse: serverResponse.loginResponse
+    });
 
-    // Step 2: Send login init to server, get response
-    const serverResponse = await apiLoginStart(email, clientLoginInit);
+    if (!loginResult) {
+      throw new Error('Invalid email or password');
+    }
 
-    // Step 3: Complete client login with server response
-    const serverLoginResponseBytes = base64ToUint8Array(serverResponse.serverLoginResponse);
-    const { clientLoginFinish, clientExportKey } = await opaqueClient.loginFinish(
-      serverLoginResponseBytes
-    );
+    await apiLoginFinish(email, loginResult.finishLoginRequest);
 
-    // Step 4: Send login finish to server for token
-    const clientLoginFinishB64 = uint8ArrayToBase64(clientLoginFinish);
-    await apiLoginFinish(email, clientLoginFinishB64, clientExportKey);
-
-    // Decrypt master key with derived password key
-    const derivedKey = await deriveKeyFromPassword(password);
-    const mk         = await unwrapMasterKey(
+    const derivedKey = await deriveKeyFromPassword(loginResult.exportKey);
+    const mk = await unwrapMasterKey(
       serverResponse.wrappedMasterKey,
       serverResponse.masterKeyIV,
       derivedKey
     );
 
-    // Store in keyStore — NOT sessionStorage
     setMasterKey(mk, email);
-
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('login-error', 'Invalid email or password');

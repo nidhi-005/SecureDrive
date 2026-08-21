@@ -53,15 +53,26 @@ function base64ToUint8Array(str) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// AUTH — OPAQUE Signup
-// Uses OPAQUE protocol for password-less registration
+// AUTH — OPAQUE Signup (request + finish)
+// Uses the official Serenity OPAQUE protocol.
 // ─────────────────────────────────────────────────────────────
 
-async function apiSignup(email, clientRegisterInit, wrappedMasterKey, masterKeyIV) {
-  const res = await fetch(`${BASE_URL}/auth/signup`, {
-    method:  'POST',
+async function apiSignupRequest(email, registrationRequest) {
+  const res = await fetch(`${BASE_URL}/auth/signup-request`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, clientRegisterInit, wrappedMasterKey, masterKeyIV })
+    body: JSON.stringify({ email, registrationRequest })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Signup failed');
+  return data;
+}
+
+async function apiSignupFinish(email, registrationRecord, wrappedMasterKey, masterKeyIV) {
+  const res = await fetch(`${BASE_URL}/auth/signup-finish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, registrationRecord, wrappedMasterKey, masterKeyIV })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Signup failed');
@@ -71,14 +82,14 @@ async function apiSignup(email, clientRegisterInit, wrappedMasterKey, masterKeyI
 
 // ─────────────────────────────────────────────────────────────
 // AUTH — OPAQUE Login (Step 1)
-// Sends clientLoginInit to server, gets serverLoginResponse
+// Sends startLoginRequest to server, gets loginResponse.
 // ─────────────────────────────────────────────────────────────
 
-async function apiLoginStart(email, clientLoginInit) {
+async function apiLoginStart(email, startLoginRequest) {
   const res = await fetch(`${BASE_URL}/auth/login`, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, clientLoginInit })
+    body: JSON.stringify({ email, startLoginRequest })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
@@ -87,14 +98,14 @@ async function apiLoginStart(email, clientLoginInit) {
 
 // ─────────────────────────────────────────────────────────────
 // AUTH — OPAQUE Login (Step 2)
-// Sends clientLoginFinish to complete authentication
+// Sends finishLoginRequest to complete authentication.
 // ─────────────────────────────────────────────────────────────
 
-async function apiLoginFinish(email, clientLoginFinish, clientExportKey) {
+async function apiLoginFinish(email, finishLoginRequest) {
   const res = await fetch(`${BASE_URL}/auth/login-finish`, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ email, clientLoginFinish, clientExportKey })
+    body: JSON.stringify({ email, finishLoginRequest })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login verification failed');
@@ -206,6 +217,18 @@ function isLoggedIn() {
 }
 
 export {
-  apiDelete, apiDownload, apiGetMeta, apiListFiles, apiLoginFinish, apiLoginStart, apiLogout, apiSignup, apiUpload, base64ToUint8Array, isLoggedIn, uint8ArrayToBase64
+    apiDelete,
+    apiDownload,
+    apiGetMeta,
+    apiListFiles,
+    apiLoginFinish,
+    apiLoginStart,
+    apiLogout,
+    apiSignupFinish,
+    apiSignupRequest,
+    apiUpload,
+    base64ToUint8Array,
+    isLoggedIn,
+    uint8ArrayToBase64
 };
 
