@@ -1,5 +1,4 @@
 const PBKDF2_ITERATIONS = 600000; // NIST 2023 recommended minimum
-const SALT = "SecureDrive_v2";    // !!Fixed salt: in production this should be per-user random
 
 // HELPERS: Convert between string <-> ArrayBuffer <-> Base64
 // Web Crypto works with raw bytes (ArrayBuffer), not strings.
@@ -17,12 +16,17 @@ function base64ToBytes(b64) {
   return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 }
 
+// Generate per-user random salt
+function generateSalt() {
+  return crypto.getRandomValues(new Uint8Array(16)); // 128-bit salt
+}
+
 // STEP 1: Derive a key from the user's password using PBKDF2
 
 // Input:  user's password (string)
 // Output: a CryptoKey (cannot be extracted from browser memory)
 
-async function deriveKeyFromPassword(password) {
+async function deriveKeyFromPassword(password, salt) {
   // Import the raw password as a "base key"
   const baseKey = await crypto.subtle.importKey(
     "raw",
@@ -36,7 +40,8 @@ async function deriveKeyFromPassword(password) {
   const derivedKey = await crypto.subtle.deriveKey(
     {
       name:       "PBKDF2",
-      salt:       strToBytes(SALT),
+      // salt:       strToBytes(salt),
+      salt,
       iterations: PBKDF2_ITERATIONS,
       hash:       "SHA-256"
     },
@@ -187,6 +192,6 @@ async function decryptFile(encryptedBuffer, wrappedCEKB64, fileIVB64, cekIVB64, 
 }
 
 export {
-  base64ToBytes, bytesToBase64, decryptFile, deriveKeyFromPassword, encryptFile, generateMasterKey, unwrapMasterKey, wrapMasterKey
+  base64ToBytes, bytesToBase64, decryptFile, deriveKeyFromPassword, encryptFile, generateMasterKey, generateSalt, unwrapMasterKey, wrapMasterKey
 };
 

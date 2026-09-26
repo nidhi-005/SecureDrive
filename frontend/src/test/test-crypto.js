@@ -1,11 +1,11 @@
 import {
+  decryptFile,
   deriveKeyFromPassword,
-  generateMasterKey,
-  wrapMasterKey,
-  unwrapMasterKey,
   encryptFile,
-  decryptFile
-} from './crypto.js';
+  generateMasterKey,
+  unwrapMasterKey,
+  wrapMasterKey
+} from '../crypto.js';
 
 async function testFullFlow() {
   console.log("Starting crypto test...");

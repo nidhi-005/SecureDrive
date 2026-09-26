@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true  // Base64-encoded registration record
   },
+  encryptionSalt:   { type: String, required: true },
   wrappedMasterKey: { type: String, required: true },
   masterKeyIV:      { type: String, required: true },
   createdAt:        { type: Date, default: Date.now }

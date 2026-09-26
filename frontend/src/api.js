@@ -68,11 +68,11 @@ async function apiSignupRequest(email, registrationRequest) {
   return data;
 }
 
-async function apiSignupFinish(email, registrationRecord, wrappedMasterKey, masterKeyIV) {
+async function apiSignupFinish(email, registrationRecord, wrappedMasterKey, masterKeyIV, encryptionSalt) {
   const res = await fetch(`${BASE_URL}/auth/signup-finish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, registrationRecord, wrappedMasterKey, masterKeyIV })
+    body: JSON.stringify({ email, registrationRecord, wrappedMasterKey, masterKeyIV, encryptionSalt })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Signup failed');
@@ -119,7 +119,6 @@ async function apiLoginFinish(email, finishLoginRequest) {
 
 function apiLogout() {
   clearToken();
-  window.location.reload();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -217,18 +216,18 @@ function isLoggedIn() {
 }
 
 export {
-    apiDelete,
-    apiDownload,
-    apiGetMeta,
-    apiListFiles,
-    apiLoginFinish,
-    apiLoginStart,
-    apiLogout,
-    apiSignupFinish,
-    apiSignupRequest,
-    apiUpload,
-    base64ToUint8Array,
-    isLoggedIn,
-    uint8ArrayToBase64
+  apiDelete,
+  apiDownload,
+  apiGetMeta,
+  apiListFiles,
+  apiLoginFinish,
+  apiLoginStart,
+  apiLogout,
+  apiSignupFinish,
+  apiSignupRequest,
+  apiUpload,
+  base64ToUint8Array,
+  isLoggedIn,
+  uint8ArrayToBase64
 };
 

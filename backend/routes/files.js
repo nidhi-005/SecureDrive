@@ -30,7 +30,7 @@ function sanitizeFilename(name) {
 // File goes to RAM temporarily, then straight to S3
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 50 * 1024 * 1024 } // 50MB — same as before
+  limits:  { fileSize: 50 * 1024 * 1024 } // 50MB
 });
 
 // ─── UPLOAD ──────────────────────────────────────────
@@ -77,7 +77,6 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // ─── LIST FILES ─────────────────────────────────────
-// Exactly the same as before — no S3 involved here
 router.get('/', async (req, res) => {
   try {
     const files = await File.find({ owner: req.user.userId })
@@ -90,7 +89,6 @@ router.get('/', async (req, res) => {
 });
 
 // ─── GET FILE METADATA ───────────────────────────────
-// Exactly the same as before
 router.get('/:fileId/meta', async (req, res) => {
   try {
     const file = await File.findOne({
@@ -114,8 +112,6 @@ router.get('/:fileId/meta', async (req, res) => {
 });
 
 // ─── DOWNLOAD ────────────────────────────────────────
-// Was: res.download(filePath)
-// Now: stream from S3
 router.get('/:fileId/download', async (req, res) => {
   try {
     const file = await File.findOne({
@@ -145,8 +141,6 @@ router.get('/:fileId/download', async (req, res) => {
 });
 
 // ─── DELETE ──────────────────────────────────────────
-// Was: fs.unlinkSync(filePath)
-// Now: deleteFromS3(key)
 router.delete('/:fileId', async (req, res) => {
   try {
     const file = await File.findOne({

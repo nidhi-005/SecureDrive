@@ -8,7 +8,7 @@ import {
   opaqueLoginStart,
   opaqueRegistrationFinish,
   opaqueRegistrationStart
-} from './src/opaqueClient.js';
+} from '../opaqueClient.js';
 
 test('opaque client wrapper performs a real registration and login flow', async () => {
   const password = 'CorrectHorseBatteryStaple!';

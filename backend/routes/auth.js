@@ -38,7 +38,7 @@ router.post('/signup-request', async (req, res) => {
 
 router.post('/signup-finish', async (req, res) => {
   try {
-    const { email, registrationRecord, wrappedMasterKey, masterKeyIV } = req.body;
+    const { email, registrationRecord, wrappedMasterKey, masterKeyIV, encryptionSalt } = req.body;
 
     if (!email || !registrationRecord || !wrappedMasterKey || !masterKeyIV) {
       return res.status(400).json({ error: 'All signup fields are required' });
@@ -52,6 +52,7 @@ router.post('/signup-finish', async (req, res) => {
     const user = new User({
       email,
       opaqueRegistrationRecord: registrationRecord,
+      encryptionSalt,
       wrappedMasterKey,
       masterKeyIV
     });
@@ -102,6 +103,7 @@ router.post('/login', async (req, res) => {
     res.json({
       email: user.email,
       loginResponse,
+      encryptionSalt: user.encryptionSalt,
       wrappedMasterKey: user.wrappedMasterKey,
       masterKeyIV: user.masterKeyIV
     });

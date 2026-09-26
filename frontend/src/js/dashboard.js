@@ -1,19 +1,18 @@
 import {
-    apiDelete,
-    apiDownload,
-    apiGetMeta,
-    apiListFiles,
-    apiLogout, apiUpload
+  apiDelete,
+  apiDownload,
+  apiGetMeta,
+  apiListFiles,
+  apiLogout, apiUpload
 } from '../api.js';
 import { decryptFile, encryptFile } from '../crypto.js';
-import { clearSession, getMasterKey, getUserEmail, isSessionActive } from './keyStore.js';
+import { clearSession, getMasterKey, getUserEmail, hydrateSession, isSessionActive } from './keyStore.js';
 
 // ── Init ───────────────────────────────────────────────────
 async function init() {
-  // Check session is active — key must be in keyStore
-  if (!isSessionActive()) {
-    // Key not in memory — session expired or direct navigation
-    // Send back to login
+  const restored = await hydrateSession();
+
+  if (!restored || !isSessionActive()) {
     window.location.href = 'index.html';
     return;
   }
@@ -35,6 +34,7 @@ function showToast(msg, type = 'success') {
 function handleLogout() {
   clearSession(); // clears key from module memory
   apiLogout();    // clears JWT from sessionStorage, redirects to login
+  window.location.href = 'index.html';
 }
 
 // ── Drag and drop ──────────────────────────────────────────

@@ -1,8 +1,10 @@
 import * as opaque from '@serenity-kit/opaque';
 
 import {
+  bytesToBase64,
   deriveKeyFromPassword,
   generateMasterKey,
+  generateSalt,
   unwrapMasterKey,
   wrapMasterKey
 } from '../crypto.js';
@@ -11,7 +13,8 @@ import {
   apiLoginFinish,
   apiLoginStart,
   apiSignupFinish,
-  apiSignupRequest
+  apiSignupRequest,
+  base64ToUint8Array
 } from '../api.js';
 import { setMasterKey } from './keyStore.js';
 
@@ -69,13 +72,15 @@ async function handleSignup() {
       registrationResponse: serverResponse.registrationResponse
     });
 
-    const derivedKey = await deriveKeyFromPassword(registrationResult.exportKey);
+    const encryptionSalt = generateSalt();
+
+    const derivedKey = await deriveKeyFromPassword(registrationResult.exportKey, encryptionSalt);
     const mk = await generateMasterKey();
     const { wrappedMasterKey, masterKeyIV } = await wrapMasterKey(mk, derivedKey);
 
-    await apiSignupFinish(email, registrationResult.registrationRecord, wrappedMasterKey, masterKeyIV);
+    await apiSignupFinish(email, registrationResult.registrationRecord, wrappedMasterKey, masterKeyIV, bytesToBase64(encryptionSalt));
 
-    setMasterKey(mk, email);
+    await setMasterKey(mk, email);
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('signup-error', err.message);
@@ -113,14 +118,16 @@ async function handleLogin() {
 
     await apiLoginFinish(email, loginResult.finishLoginRequest);
 
-    const derivedKey = await deriveKeyFromPassword(loginResult.exportKey);
+    const encryptionSalt = base64ToUint8Array(serverResponse.encryptionSalt);
+
+    const derivedKey = await deriveKeyFromPassword(loginResult.exportKey, encryptionSalt);
     const mk = await unwrapMasterKey(
       serverResponse.wrappedMasterKey,
       serverResponse.masterKeyIV,
       derivedKey
     );
 
-    setMasterKey(mk, email);
+    await setMasterKey(mk, email);
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('login-error', 'Invalid email or password');
@@ -132,6 +139,11 @@ async function handleLogin() {
 // ── Event Listener Registration ───────────────────────────
 // Register all event handlers when DOM is ready
 function initAuthScreen() {
+  if (sessionStorage.getItem('token')) {
+    window.location.href = 'dashboard.html';
+    return;
+  }
+
   // Tab switching
   const tabLogin = document.getElementById('tab-login');
   const tabSignup = document.getElementById('tab-signup');
