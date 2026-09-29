@@ -25,6 +25,7 @@ __pycache__/
 
 # Uploads (user files)
 uploads/
+backend/recovery-data/
 
 # Logs
 *.log

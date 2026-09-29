@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const opaque = require('@serenity-kit/opaque');
 const User = require('../models/User');
+const recoveryStore = require('../recovery/localRecoveryStore');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
   throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
@@ -57,6 +58,15 @@ router.post('/signup-finish', async (req, res) => {
       masterKeyIV
     });
     await user.save();
+
+    await recoveryStore.append({
+      recordType: 'MASTER_KEY',
+      userId: String(user._id),
+      version: 1,
+      wrappedKey: wrappedMasterKey,
+      iv: masterKeyIV,
+      createdAt: new Date().toISOString()
+    });
 
     const token = jwt.sign(
       { userId: user._id, email: user.email },

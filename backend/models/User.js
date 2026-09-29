@@ -1,21 +1,19 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true
-  },
-  // OPAQUE registration data stored instead of bcrypt hash
-  opaqueRegistrationRecord: {
-    type: String,
-    required: true  // Base64-encoded registration record
-  },
-  encryptionSalt:   { type: String, required: true },
+  email: { type: String, required: true, unique: true, lowercase: true },
+  opaqueRegistrationRecord: { type: String, required: true },
+  encryptionSalt: { type: String, required: true },
   wrappedMasterKey: { type: String, required: true },
-  masterKeyIV:      { type: String, required: true },
-  createdAt:        { type: Date, default: Date.now }
+  masterKeyIV: { type: String, required: true },
+
+  // Version of the currently active wrapped Master Key.
+  wrappedMasterKeyVersion: {
+    type: Number,
+    default: 1
+  },
+
+  createdAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('User', userSchema);

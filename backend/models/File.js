@@ -6,13 +6,46 @@ const fileSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  originalName: { type: String, required: true },
-  storagePath: { type: String, required: true },
-  wrappedCEK:   { type: String, required: true },
-  fileIV:       { type: String, required: true },
-  cekIV:        { type: String, required: true },
-  size:         { type: Number },
-  uploadedAt:   { type: Date, default: Date.now }
+
+  originalName: {
+    type: String,
+    required: true
+  },
+
+  storagePath: {
+    type: String,
+    required: true
+  },
+
+  wrappedCEK: {
+    type: String,
+    required: true
+  },
+
+  fileIV: {
+    type: String,
+    required: true
+  },
+
+  cekIV: {
+    type: String,
+    required: true
+  },
+
+  // Version of the currently active wrapped CEK.
+  wrappedCEKVersion: {
+    type: Number,
+    default: 1
+  },
+
+  size: {
+    type: Number
+  },
+
+  uploadedAt: {
+    type: Date,
+    default: Date.now
+  }
 });
 
 module.exports = mongoose.model('File', fileSchema);

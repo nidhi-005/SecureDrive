@@ -4,6 +4,7 @@ const multer   = require('multer');
 const { Readable } = require('stream');
 const File     = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
+const recoveryStore = require('../recovery/localRecoveryStore');
 
 // Allowed file types — MIME type allowlist (T1036 fix)
 const ALLOWED_TYPES = [
@@ -68,7 +69,21 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
 
     await newFile.save();
-    res.status(201).json({ message: 'File uploaded', fileId: newFile._id });
+
+    await recoveryStore.append({
+      recordType: 'FILE_CEK',
+      userId: String(req.user.userId),
+      fileId: String(newFile._id),
+      version: 1,
+      wrappedKey: wrappedCEK,
+      iv: cekIV,
+      createdAt: new Date().toISOString()
+    });
+
+    res.status(201).json({
+      message: 'File uploaded',
+      fileId: newFile._id
+    });
 
   } catch (err) {
     console.error(err);
