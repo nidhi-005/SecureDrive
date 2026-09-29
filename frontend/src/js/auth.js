@@ -10,12 +10,14 @@ import {
 } from '../crypto.js';
 
 import {
+  apiGetMasterKeyRecovery,
   apiLoginFinish,
   apiLoginStart,
   apiSignupFinish,
   apiSignupRequest,
   base64ToUint8Array
 } from '../api.js';
+
 import { setMasterKey } from './keyStore.js';
 
 // ── Tab switch ──────────────────────────────────────────────
@@ -121,16 +123,78 @@ async function handleLogin() {
     const encryptionSalt = base64ToUint8Array(serverResponse.encryptionSalt);
 
     const derivedKey = await deriveKeyFromPassword(loginResult.exportKey, encryptionSalt);
-    const mk = await unwrapMasterKey(
-      serverResponse.wrappedMasterKey,
-      serverResponse.masterKeyIV,
-      derivedKey
-    );
+    
+    let mk;
+    let recovered = false;
+
+    try {
+      // First try the current MongoDB value.
+      mk = await unwrapMasterKey(
+        serverResponse.wrappedMasterKey,
+        serverResponse.masterKeyIV,
+        derivedKey
+      );
+    } catch (primaryError) {
+      console.warn(
+        'Primary Master Key unwrap failed. Attempting recovery...',
+        primaryError
+      );
+
+      const recoveryData = await apiGetMasterKeyRecovery();
+
+      if (!recoveryData.records || recoveryData.records.length === 0) {
+        throw new Error('Master Key recovery data unavailable');
+      }
+
+      // Records are returned newest → oldest.
+      for (const record of recoveryData.records) {
+        try {
+          mk = await unwrapMasterKey(
+            record.wrappedKey,
+            record.iv,
+            derivedKey
+          );
+
+          recovered = true;
+          break;
+        } catch (recoveryError) {
+          console.warn(
+            `Master Key recovery version ${record.version} failed`
+          );
+        }
+      }
+
+      if (!mk) {
+        throw new Error('Could not recover Master Key');
+      }
+    }
 
     await setMasterKey(mk, email);
+
+    // Repair MongoDB after successful recovery.
+    if (recovered) {
+      try {
+        const repaired = await wrapMasterKey(mk, derivedKey);
+
+        await apiRepairMasterKey(
+          repaired.wrappedMasterKey,
+          repaired.masterKeyIV
+        );
+
+        console.log('Master Key successfully recovered and repaired.');
+      } catch (repairError) {
+        // Recovery succeeded, so the user can still continue.
+        // The primary database repair can be retried later.
+        console.error(
+          'Master Key recovered, but primary repair failed:',
+          repairError
+        );
+      }
+    }
+
     window.location.href = 'dashboard.html';
   } catch (err) {
-    showError('login-error', 'Invalid email or password');
+    showError('login-error', err.message || 'Login failed');
     btn.disabled    = false;
     btn.textContent = 'Login';
   }

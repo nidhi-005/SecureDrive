@@ -193,6 +193,104 @@ async function apiDownload(fileId) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// RECOVERY — Master Key history
+// ─────────────────────────────────────────────────────────────
+
+async function apiGetMasterKeyRecovery() {
+  const res = await fetch(`${BASE_URL}/auth/recovery/master-key`, {
+    headers: authHeader()
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not fetch Master Key recovery data');
+  }
+
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// RECOVERY — Repair current Master Key
+// ─────────────────────────────────────────────────────────────
+
+async function apiRepairMasterKey(wrappedMasterKey, masterKeyIV) {
+  const res = await fetch(`${BASE_URL}/auth/recovery/master-key/repair`, {
+    method: 'POST',
+    headers: {
+      ...authHeader(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      wrappedMasterKey,
+      masterKeyIV
+    })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not repair Master Key');
+  }
+
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// RECOVERY — File CEK history
+// ─────────────────────────────────────────────────────────────
+
+async function apiGetFileKeyRecovery(fileId) {
+  const res = await fetch(
+    `${BASE_URL}/files/${fileId}/recovery`,
+    {
+      headers: authHeader()
+    }
+  );
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not fetch file recovery data');
+  }
+
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// RECOVERY — Repair current file CEK
+// ─────────────────────────────────────────────────────────────
+
+async function apiRepairFileKey(
+  fileId,
+  wrappedCEK,
+  cekIV
+) {
+  const res = await fetch(
+    `${BASE_URL}/files/${fileId}/recovery/repair`,
+    {
+      method: 'POST',
+      headers: {
+        ...authHeader(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        wrappedCEK,
+        cekIV
+      })
+    }
+  );
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not repair file key');
+  }
+
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
 // FILES — Delete
 // ─────────────────────────────────────────────────────────────
 
@@ -218,11 +316,15 @@ function isLoggedIn() {
 export {
   apiDelete,
   apiDownload,
+  apiGetFileKeyRecovery,
+  apiGetMasterKeyRecovery,
   apiGetMeta,
   apiListFiles,
   apiLoginFinish,
   apiLoginStart,
   apiLogout,
+  apiRepairFileKey,
+  apiRepairMasterKey,
   apiSignupFinish,
   apiSignupRequest,
   apiUpload,

@@ -178,4 +178,87 @@ router.delete('/:fileId', async (req, res) => {
   }
 });
 
+router.get('/:fileId/recovery', async (req, res) => {
+  try {
+    const file = await File.findOne({
+      _id: req.params.fileId,
+      owner: req.user.userId
+    });
+
+    if (!file) {
+      return res.status(404).json({
+        error: 'File not found'
+      });
+    }
+
+    const records = await recoveryStore.getFileKeyHistory(
+      req.user.userId,
+      req.params.fileId
+    );
+
+    res.json({
+      records
+    });
+  } catch (err) {
+    console.error('File key recovery lookup failed:', err);
+
+    res.status(500).json({
+      error: 'Could not fetch file recovery data'
+    });
+  }
+});
+
+router.post('/:fileId/recovery/repair', async (req, res) => {
+  try {
+    const { wrappedCEK, cekIV } = req.body;
+
+    if (!wrappedCEK || !cekIV) {
+      return res.status(400).json({
+        error: 'Missing CEK recovery data'
+      });
+    }
+
+    const file = await File.findOne({
+      _id: req.params.fileId,
+      owner: req.user.userId
+    });
+
+    if (!file) {
+      return res.status(404).json({
+        error: 'File not found'
+      });
+    }
+
+    const newVersion =
+      (file.wrappedCEKVersion || 1) + 1;
+
+    file.wrappedCEK = wrappedCEK;
+    file.cekIV = cekIV;
+    file.wrappedCEKVersion = newVersion;
+
+    await file.save();
+
+    await recoveryStore.append({
+      recordType: 'FILE_CEK',
+      userId: String(req.user.userId),
+      fileId: String(file._id),
+      version: newVersion,
+      wrappedKey: wrappedCEK,
+      iv: cekIV,
+      createdAt: new Date().toISOString()
+    });
+
+    res.json({
+      message: 'File CEK repaired',
+      version: newVersion
+    });
+  } catch (err) {
+    console.error('File CEK repair failed:', err);
+
+    res.status(500).json({
+      error: 'Could not repair file CEK'
+    });
+  }
+});
+
 module.exports = router;

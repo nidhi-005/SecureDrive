@@ -1,11 +1,19 @@
 import {
   apiDelete,
   apiDownload,
+  apiGetFileKeyRecovery,
   apiGetMeta,
   apiListFiles,
-  apiLogout, apiUpload
+  apiLogout,
+  apiRepairFileKey,
+  apiUpload,
+  base64ToUint8Array
 } from '../api.js';
-import { decryptFile, encryptFile } from '../crypto.js';
+import {
+  encryptFile,
+  unwrapCEK,
+  wrapCEK
+} from '../crypto.js';
 import { clearSession, getMasterKey, getUserEmail, hydrateSession, isSessionActive } from './keyStore.js';
 
 // ── Init ───────────────────────────────────────────────────
@@ -139,22 +147,124 @@ async function downloadFile(fileId, fileName) {
   if (!masterKey) return;
 
   showToast('Decrypting...');
+
   try {
-    const meta            = await apiGetMeta(fileId);
+    const meta = await apiGetMeta(fileId);
     const encryptedBuffer = await apiDownload(fileId);
-    const decryptedBuffer = await decryptFile(
-      encryptedBuffer, meta.wrappedCEK, meta.fileIV, meta.cekIV, masterKey
+
+    let cek;
+    let recovered = false;
+
+    // ─────────────────────────────────────────────
+    // First try the current CEK from MongoDB.
+    // ─────────────────────────────────────────────
+    try {
+      cek = await unwrapCEK(
+        meta.wrappedCEK,
+        meta.cekIV,
+        masterKey
+      );
+    } catch (primaryError) {
+      console.warn(
+        'Primary CEK unwrap failed. Attempting recovery...',
+        primaryError
+      );
+
+      const recoveryData =
+        await apiGetFileKeyRecovery(fileId);
+
+      if (
+        !recoveryData.records ||
+        recoveryData.records.length === 0
+      ) {
+        throw new Error('File key recovery data unavailable');
+      }
+
+      // Try newest → oldest.
+      for (const record of recoveryData.records) {
+        try {
+          cek = await unwrapCEK(
+            record.wrappedKey,
+            record.iv,
+            masterKey
+          );
+
+          recovered = true;
+          break;
+        } catch (recoveryError) {
+          console.warn(
+            `File CEK recovery version ${record.version} failed`
+          );
+        }
+      }
+
+      if (!cek) {
+        throw new Error('Could not recover file encryption key');
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // Decrypt the file using the recovered/current CEK.
+    // ─────────────────────────────────────────────
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv: base64ToUint8Array(meta.fileIV)
+      },
+      cek,
+      encryptedBuffer
     );
+
+    // ─────────────────────────────────────────────
+    // Repair MongoDB if recovery was required.
+    // ─────────────────────────────────────────────
+    if (recovered) {
+      try {
+        const repaired = await wrapCEK(
+          cek,
+          masterKey
+        );
+
+        await apiRepairFileKey(
+          fileId,
+          repaired.wrappedCEK,
+          repaired.cekIV
+        );
+
+        console.log(
+          'File CEK successfully recovered and repaired.'
+        );
+      } catch (repairError) {
+        // File was already successfully decrypted.
+        console.error(
+          'File CEK recovered, but primary repair failed:',
+          repairError
+        );
+      }
+    }
+
     const blob = new Blob([decryptedBuffer]);
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+
+    a.href = url;
     a.download = fileName;
     a.click();
+
     URL.revokeObjectURL(url);
-    showToast('File decrypted and downloaded!');
+
+    showToast(
+      recovered
+        ? 'File recovered and downloaded!'
+        : 'File decrypted and downloaded!'
+    );
+
   } catch (err) {
-    showToast('Download failed: ' + err.message, 'error');
+    console.error(err);
+    showToast(
+      'Download failed: ' + err.message,
+      'error'
+    );
   }
 }
 

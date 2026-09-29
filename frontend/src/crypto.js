@@ -127,26 +127,10 @@ async function unwrapMasterKey(wrappedMasterKeyB64, masterKeyIVB64, derivedKey) 
 
 // Output: { encryptedFile, wrappedCEK, fileIV, cekIV }
 
-async function encryptFile(fileArrayBuffer, masterKey) {
-  // Generate a unique random key for this specific file
-  const cek = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
+// STEP 5A: Wrap a CEK using the Master Key
+async function wrapCEK(cek, masterKey) {
+  const cekIV = crypto.getRandomValues(new Uint8Array(12));
 
-  // Generate unique IVs. CRITICAL: never reuse an IV with the same key
-  const fileIV = crypto.getRandomValues(new Uint8Array(12));
-  const cekIV  = crypto.getRandomValues(new Uint8Array(12));
-
-  // Encrypt the actual file using the CEK
-  const encryptedFile = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: fileIV },
-    cek,
-    fileArrayBuffer
-  );
-
-  // Wrap (encrypt) the CEK using the Master Key
   const wrappedCEKBuffer = await crypto.subtle.wrapKey(
     "raw",
     cek,
@@ -155,10 +139,48 @@ async function encryptFile(fileArrayBuffer, masterKey) {
   );
 
   return {
-    encryptedFile,                       // ArrayBuffer: send this as the file
     wrappedCEK: bytesToBase64(wrappedCEKBuffer),
-    fileIV:     bytesToBase64(fileIV),
-    cekIV:      bytesToBase64(cekIV)
+    cekIV: bytesToBase64(cekIV)
+  };
+}
+
+// STEP 5B: Unwrap a CEK using the Master Key
+async function unwrapCEK(wrappedCEKB64, cekIVB64, masterKey) {
+  const cek = await crypto.subtle.unwrapKey(
+    "raw",
+    base64ToBytes(wrappedCEKB64),
+    masterKey,
+    { name: "AES-GCM", iv: base64ToBytes(cekIVB64) },
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["decrypt"]
+  );
+
+  return cek;
+}
+
+async function encryptFile(fileArrayBuffer, masterKey) {
+  const cek = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+
+  const fileIV = crypto.getRandomValues(new Uint8Array(12));
+
+  const encryptedFile = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: fileIV },
+    cek,
+    fileArrayBuffer
+  );
+
+  const { wrappedCEK, cekIV } = await wrapCEK(cek, masterKey);
+
+  return {
+    encryptedFile,
+    wrappedCEK,
+    fileIV: bytesToBase64(fileIV),
+    cekIV
   };
 }
 
@@ -166,24 +188,21 @@ async function encryptFile(fileArrayBuffer, masterKey) {
 
 // Takes encrypted file + metadata from server -> original file
 
-async function decryptFile(encryptedBuffer, wrappedCEKB64, fileIVB64, cekIVB64, masterKey) {
-  const cekIV  = base64ToBytes(cekIVB64);
-  const fileIV = base64ToBytes(fileIVB64);
-
-  // Unwrap (decrypt) the CEK using the Master Key
-  const cek = await crypto.subtle.unwrapKey(
-    "raw",
-    base64ToBytes(wrappedCEKB64),
-    masterKey,
-    { name: "AES-GCM", iv: cekIV },
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
+async function decryptFile(
+  encryptedBuffer,
+  wrappedCEKB64,
+  fileIVB64,
+  cekIVB64,
+  masterKey
+) {
+  const cek = await unwrapCEK(
+    wrappedCEKB64,
+    cekIVB64,
+    masterKey
   );
 
-  // Decrypt the actual file using the CEK
   const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: fileIV },
+    { name: "AES-GCM", iv: base64ToBytes(fileIVB64) },
     cek,
     encryptedBuffer
   );
@@ -192,6 +211,16 @@ async function decryptFile(encryptedBuffer, wrappedCEKB64, fileIVB64, cekIVB64, 
 }
 
 export {
-  base64ToBytes, bytesToBase64, decryptFile, deriveKeyFromPassword, encryptFile, generateMasterKey, generateSalt, unwrapMasterKey, wrapMasterKey
+  base64ToBytes,
+  bytesToBase64,
+  decryptFile,
+  deriveKeyFromPassword,
+  encryptFile,
+  generateMasterKey,
+  generateSalt,
+  unwrapCEK,
+  unwrapMasterKey,
+  wrapCEK,
+  wrapMasterKey
 };
 

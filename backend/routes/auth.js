@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const opaque = require('@serenity-kit/opaque');
 const User = require('../models/User');
 const recoveryStore = require('../recovery/localRecoveryStore');
+const auth = require('../middleware/auth');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
   throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
@@ -163,6 +164,74 @@ router.post('/login-finish', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(401).json({ error: 'Login verification failed' });
+  }
+});
+
+router.get('/recovery/master-key', auth, async (req, res) => {
+  try {
+    const records = await recoveryStore.getMasterKeyHistory(
+      req.user.userId
+    );
+
+    res.json({
+      records
+    });
+  } catch (err) {
+    console.error('Master Key recovery lookup failed:', err);
+    res.status(500).json({
+      error: 'Could not fetch Master Key recovery data'
+    });
+  }
+});
+
+router.post('/recovery/master-key/repair', auth, async (req, res) => {
+  try {
+    const { wrappedMasterKey, masterKeyIV } = req.body;
+
+    if (!wrappedMasterKey || !masterKeyIV) {
+      return res.status(400).json({
+        error: 'Missing Master Key recovery data'
+      });
+    }
+
+    const User = require('../models/User');
+
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
+
+    const newVersion =
+      (user.wrappedMasterKeyVersion || 1) + 1;
+
+    user.wrappedMasterKey = wrappedMasterKey;
+    user.masterKeyIV = masterKeyIV;
+    user.wrappedMasterKeyVersion = newVersion;
+
+    await user.save();
+
+    await recoveryStore.append({
+      recordType: 'MASTER_KEY',
+      userId: String(user._id),
+      version: newVersion,
+      wrappedKey: wrappedMasterKey,
+      iv: masterKeyIV,
+      createdAt: new Date().toISOString()
+    });
+
+    res.json({
+      message: 'Master Key repaired',
+      version: newVersion
+    });
+  } catch (err) {
+    console.error('Master Key repair failed:', err);
+
+    res.status(500).json({
+      error: 'Could not repair Master Key'
+    });
   }
 });
 
