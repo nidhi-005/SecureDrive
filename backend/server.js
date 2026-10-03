@@ -10,8 +10,8 @@ const corsOptions = {
     const allowedPatterns = [
       /^http:\/\/localhost:\d+$/,
       /^http:\/\/127\.0\.0\.1:\d+$/,
-      /^https:\/\/securedriv3\.netlify\.app$/,
-      /^https:\/\/.*--securedriv3\.netlify\.app$/,
+      /^https:\/\/securedrive3\.netlify\.app$/,
+      /^https:\/\/.*--securedrive3\.netlify\.app$/,
     ];
 
     if (!origin || allowedPatterns.some((pattern) => pattern.test(origin))) {
@@ -60,11 +60,6 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
-
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'");
-  next(); });
-
 
 // Public routes — no token needed
 app.use('/api/auth', require('./routes/auth'));
