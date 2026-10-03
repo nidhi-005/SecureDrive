@@ -141,9 +141,11 @@ window.downloadFile = async (fileId, fileName) => {
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = fileName;
+    a.download = meta.originalName || fileName;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     showToast('File decrypted and downloaded!');
   } catch (err) {
     showToast('Download failed: ' + err.message, 'error');
