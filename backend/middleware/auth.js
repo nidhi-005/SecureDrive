@@ -18,7 +18,8 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const user = await User.findById(decoded.userId).select('_id email');
+    const user = await User.findById(decoded.userId)
+      .select('_id email deletionPending');
 
     if (!user) {
       return res.status(401).json({
@@ -26,16 +27,28 @@ module.exports = async (req, res, next) => {
       });
     }
 
+    // Permit a retry of account deletion, but no other activity.
+    const isDeletionRetry =
+      req.method === 'DELETE' && req.path === '/account';
+
+    if (user.deletionPending && !isDeletionRetry) {
+      return res.status(403).json({
+        error: 'Account deletion is in progress'
+      });
+    }
+
     req.user = {
       userId: String(user._id),
-      email: user.email
+      email: user.email,
+      deletionPending: user.deletionPending
     };
 
     next();
+    
   } catch (err) {
     if (err.name === 'JsonWebTokenError' ||
-        err.name === 'TokenExpiredError' ||
-        err.name === 'CastError') {
+      err.name === 'TokenExpiredError' ||
+      err.name === 'CastError') {
       return res.status(401).json({
         error: 'Invalid or expired token'
       });

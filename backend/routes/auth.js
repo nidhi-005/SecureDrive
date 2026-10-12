@@ -6,7 +6,7 @@ const User = require('../models/User');
 const recoveryStore = require('../recovery/s3RecoveryStore');
 const auth = require('../middleware/auth');
 const File = require('../models/File');
-const { deleteFromS3 } = require('../config/s3');
+const { deleteAllUserFilesFromS3 } = require('../config/s3');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
   throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
@@ -97,6 +97,12 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'User does not exist' });
     }
 
+    if (user.deletionPending) {
+      return res.status(403).json({
+        error: 'Account deletion is in progress'
+      });
+    }
+
     const { loginResponse, serverLoginState } = opaque.server.startLogin({
       serverSetup: OPAQUE_SERVER_SETUP,
       userIdentifier: email,
@@ -147,6 +153,12 @@ router.post('/login-finish', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ error: 'User does not exist' });
+    }
+
+    if (user.deletionPending) {
+      return res.status(403).json({
+        error: 'Account deletion is in progress'
+      });
     }
 
     const { sessionKey } = opaque.server.finishLogin({
@@ -238,47 +250,55 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
 });
 
 router.delete('/account', auth, async (req, res) => {
+  const userId = String(req.user.userId);
+
   try {
-    const userId = String(req.user.userId);
+    // 1. Mark the account as pending deletion.
+    // This also makes retries safe if a previous attempt failed.
+    const user = await User.findOneAndUpdate(
+      { _id: userId },
+      { $set: { deletionPending: true } },
+      { new: true }
+    ).select('_id email');
 
-    // Find only files belonging to the authenticated user.
-    const files = await File.find({ owner: userId })
-      .select('_id storagePath')
-      .lean();
-
-    // Delete every stored object before removing database records.
-    // If any deletion fails, keep the account and metadata for retry.
-    for (const file of files) {
-      await deleteFromS3(file.storagePath);
-    }
-
-    // Remove the user's historical encryption-key recovery records.
-    await recoveryStore.deleteUserRecords(userId);
-
-    // Remove file metadata and then the account itself.
-    await File.deleteMany({ owner: userId });
-
-    const deletedUser = await User.findByIdAndDelete(userId);
-
-    if (!deletedUser) {
+    if (!user) {
       return res.status(404).json({
         error: 'Account not found'
       });
     }
 
-    // Invalidate any in-memory OPAQUE login challenge for this email.
+    // 2. Remove all encrypted file objects belonging to this user.
+    // If this fails, stop and leave the account pending for retry.
+    await deleteAllUserFilesFromS3(userId);
+
+    // 3. Remove the user's file metadata from MongoDB.
+    await File.deleteMany({ owner: userId });
+
+    // 4. Remove the user record.
+    const deletedUser = await User.findByIdAndDelete(userId);
+
+    if (!deletedUser) {
+      throw new Error('User record disappeared during deletion');
+    }
+
+    // 5. Clear any in-memory OPAQUE login challenge for this email.
     if (global.opaqueLogins) {
       delete global.opaqueLogins[deletedUser.email];
     }
 
-    return res.json({
-      message: 'Account and associated data deleted'
+    // IMPORTANT:
+    // Do not delete, rewrite, or remove records from recoveryStore.
+    // WORM-protected recovery history must remain untouched.
+
+    return res.status(200).json({
+      message: 'Account and associated active data deleted'
     });
   } catch (err) {
-    console.error('Account deletion failed:', err);
+    // Avoid logging request data, tokens, or recovery records.
+    console.error('Account deletion failed:', err.message);
 
     return res.status(500).json({
-      error: 'Account deletion could not be completed. Contact support before retrying.'
+      error: 'Account deletion is incomplete. Retry the deletion or contact support.'
     });
   }
 });

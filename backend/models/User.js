@@ -13,6 +13,12 @@ const userSchema = new mongoose.Schema({
     default: 1
   },
 
+  deletionPending: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+
   createdAt: { type: Date, default: Date.now }
 });
 

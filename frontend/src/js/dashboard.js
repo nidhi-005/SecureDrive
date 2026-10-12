@@ -53,7 +53,9 @@ async function handleDeleteAccount() {
   const confirmed = confirm(
     `Permanently delete ${email}?\n\n` +
     'This will delete your account, encrypted files stored in S3, ' +
-    'file metadata, and recovery history. This cannot be undone.'
+    'and file metadata. Immutable recovery records will be retained ' +
+    'according to the recovery storage retention policy. ' +
+    'This action cannot be undone.'
   );
 
   if (!confirmed) return;
@@ -70,8 +72,12 @@ async function handleDeleteAccount() {
 
     // Clear the master key, saved session key, email, and JWT.
     clearSession();
+    apiLogout();
 
-    alert('Your account and associated data have been deleted.');
+    alert(
+      'Your account and active data have been deleted. ' +
+      'Immutable recovery records are retained according to the retention policy.'
+    );
     window.location.replace('index.html');
   } catch (err) {
     console.error('Account deletion failed:', err);

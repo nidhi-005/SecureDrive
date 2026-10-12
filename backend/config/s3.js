@@ -1,4 +1,10 @@
-const { S3Client, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand
+} = require('@aws-sdk/client-s3');
 const { Upload } = require('@aws-sdk/lib-storage');
 
 const s3 = new S3Client({
@@ -36,4 +42,59 @@ async function deleteFromS3(key) {
   await s3.send(command);
 }
 
-module.exports = { uploadToS3, downloadFromS3, deleteFromS3 };
+async function deleteAllUserFilesFromS3(userId) {
+  if (!BUCKET) {
+    throw new Error('AWS_BUCKET_NAME is not configured');
+  }
+
+  if (!/^[a-f\d]{24}$/i.test(String(userId))) {
+    throw new Error('Invalid user ID');
+  }
+
+  const prefix = `${userId}/`;
+  let continuationToken;
+
+  do {
+    const response = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken
+      })
+    );
+
+    const objects = (response.Contents || [])
+      .filter(object => object.Key)
+      .map(object => ({ Key: object.Key }));
+
+    if (objects.length > 0) {
+      const result = await s3.send(
+        new DeleteObjectsCommand({
+          Bucket: BUCKET,
+          Delete: {
+            Objects: objects,
+            Quiet: false
+          }
+        })
+      );
+
+      // S3 can return HTTP success while individual deletions fail.
+      if (result.Errors && result.Errors.length > 0) {
+        throw new Error(
+          `Failed to delete ${result.Errors.length} S3 object(s)`
+        );
+      }
+    }
+
+    continuationToken = response.IsTruncated
+      ? response.NextContinuationToken
+      : undefined;
+  } while (continuationToken);
+}
+
+module.exports = {
+  uploadToS3,
+  downloadFromS3,
+  deleteFromS3,
+  deleteAllUserFilesFromS3
+};
