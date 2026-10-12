@@ -305,6 +305,21 @@ async function apiDelete(fileId) {
   return data;
 }
 
+async function apiDeleteAccount() {
+  const res = await fetch(`${BASE_URL}/auth/account`, {
+    method: 'DELETE',
+    headers: authHeader()
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Account deletion failed');
+  }
+
+  return data;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Helper: check if user is logged in
 // ─────────────────────────────────────────────────────────────
@@ -314,8 +329,7 @@ function isLoggedIn() {
 }
 
 export {
-  apiDelete,
-  apiDownload,
+  apiDelete, apiDeleteAccount, apiDownload,
   apiGetFileKeyRecovery,
   apiGetMasterKeyRecovery,
   apiGetMeta,
@@ -327,8 +341,7 @@ export {
   apiRepairMasterKey,
   apiSignupFinish,
   apiSignupRequest,
-  apiUpload,
-  base64ToUint8Array,
+  apiUpload, base64ToUint8Array,
   isLoggedIn,
   uint8ArrayToBase64
 };

@@ -4,7 +4,7 @@
 
 SecureDrive is a web-native cloud storage application where all encryption and decryption happens entirely in your browser. The server stores only encrypted bytes — even a complete server breach exposes nothing meaningful.
 
----
+<!-- ---
 
 ## Live Deployment
 
@@ -14,9 +14,9 @@ SecureDrive is a web-native cloud storage application where all encryption and d
 | **Backend API** | `https://securedrive-mmls.onrender.com` |
 | **AWS S3 Region** | `ap-south-1` (Mumbai) |
 
-> **Note:** Backend is hosted on Render's free tier. First request after inactivity may take 30–60 seconds to wake up (cold start).
+> **Note:** Backend is hosted on Render's free tier. First request after inactivity may take 30–60 seconds to wake up (cold start). -->
 
----
+<!-- ---
 
 ## Branch Status
 
@@ -25,7 +25,7 @@ SecureDrive is a web-native cloud storage application where all encryption and d
 | `production` | Active development — current working version | ✅ Live |
 | `main` | Stable release branch | ⏳ Pending merge from `production` |
 
-> All current development happens on the `production` branch. The `main` branch will be updated once the blockchain audit trail is complete and tested.
+> All current development happens on the `production` branch. The `main` branch will be updated once the blockchain audit trail is complete and tested. -->
 
 ---
 

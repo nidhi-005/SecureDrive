@@ -3,8 +3,10 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const opaque = require('@serenity-kit/opaque');
 const User = require('../models/User');
-const recoveryStore = require('../recovery/localRecoveryStore');
+const recoveryStore = require('../recovery/s3RecoveryStore');
 const auth = require('../middleware/auth');
+const File = require('../models/File');
+const { deleteFromS3 } = require('../config/s3');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
   throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
@@ -231,6 +233,52 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
 
     res.status(500).json({
       error: 'Could not repair Master Key'
+    });
+  }
+});
+
+router.delete('/account', auth, async (req, res) => {
+  try {
+    const userId = String(req.user.userId);
+
+    // Find only files belonging to the authenticated user.
+    const files = await File.find({ owner: userId })
+      .select('_id storagePath')
+      .lean();
+
+    // Delete every stored object before removing database records.
+    // If any deletion fails, keep the account and metadata for retry.
+    for (const file of files) {
+      await deleteFromS3(file.storagePath);
+    }
+
+    // Remove the user's historical encryption-key recovery records.
+    await recoveryStore.deleteUserRecords(userId);
+
+    // Remove file metadata and then the account itself.
+    await File.deleteMany({ owner: userId });
+
+    const deletedUser = await User.findByIdAndDelete(userId);
+
+    if (!deletedUser) {
+      return res.status(404).json({
+        error: 'Account not found'
+      });
+    }
+
+    // Invalidate any in-memory OPAQUE login challenge for this email.
+    if (global.opaqueLogins) {
+      delete global.opaqueLogins[deletedUser.email];
+    }
+
+    return res.json({
+      message: 'Account and associated data deleted'
+    });
+  } catch (err) {
+    console.error('Account deletion failed:', err);
+
+    return res.status(500).json({
+      error: 'Account deletion could not be completed. Contact support before retrying.'
     });
   }
 });

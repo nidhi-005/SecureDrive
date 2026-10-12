@@ -13,6 +13,7 @@ import {
   apiGetMasterKeyRecovery,
   apiLoginFinish,
   apiLoginStart,
+  apiRepairMasterKey,
   apiSignupFinish,
   apiSignupRequest,
   base64ToUint8Array

@@ -1,5 +1,6 @@
 import {
   apiDelete,
+  apiDeleteAccount,
   apiDownload,
   apiGetFileKeyRecovery,
   apiGetMeta,
@@ -32,8 +33,8 @@ async function init() {
 // ── Toast ──────────────────────────────────────────────────
 function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
-  t.textContent   = msg;
-  t.className     = type;
+  t.textContent = msg;
+  t.className = type;
   t.style.display = 'block';
   setTimeout(() => t.style.display = 'none', 3000);
 }
@@ -43,6 +44,48 @@ function handleLogout() {
   clearSession(); // clears key from module memory
   apiLogout();    // clears JWT from sessionStorage, redirects to login
   window.location.href = 'index.html';
+}
+
+// ── Delete Account ─────────────────────────────────────────────────
+async function handleDeleteAccount() {
+  const email = getUserEmail() || 'your account';
+
+  const confirmed = confirm(
+    `Permanently delete ${email}?\n\n` +
+    'This will delete your account, encrypted files stored in S3, ' +
+    'file metadata, and recovery history. This cannot be undone.'
+  );
+
+  if (!confirmed) return;
+
+  const deleteBtn = document.getElementById('delete-account-btn');
+
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = 'Deleting...';
+  }
+
+  try {
+    await apiDeleteAccount();
+
+    // Clear the master key, saved session key, email, and JWT.
+    clearSession();
+
+    alert('Your account and associated data have been deleted.');
+    window.location.replace('index.html');
+  } catch (err) {
+    console.error('Account deletion failed:', err);
+
+    alert(
+      `Account deletion failed: ${err.message}\n\n` +
+      'Check the server logs before attempting again.'
+    );
+
+    if (deleteBtn) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = 'Delete Account';
+    }
+  }
 }
 
 // ── Drag and drop ──────────────────────────────────────────
@@ -294,18 +337,18 @@ function escapeHtml(str) {
 function getFileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
   const map = {
-    pdf:'📄', jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️',
-    mp4:'🎬', mp3:'🎵', zip:'📦', rar:'📦',
-    doc:'📝', docx:'📝', txt:'📃', xls:'📊', xlsx:'📊'
+    pdf: '📄', jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️',
+    mp4: '🎬', mp3: '🎵', zip: '📦', rar: '📦',
+    doc: '📝', docx: '📝', txt: '📃', xls: '📊', xlsx: '📊'
   };
   return map[ext] || '📁';
 }
 
 function formatSize(bytes) {
   if (!bytes) return '—';
-  if (bytes < 1024)      return bytes + ' B';
-  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
-  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 function formatDate(dateStr) {
@@ -338,8 +381,12 @@ function attachFileListeners() {
 function initDashboard() {
   // Logout button
   const logoutBtn = document.getElementById('logout-btn');
+  const deleteAccountBtn = document.getElementById('delete-account-btn');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', handleLogout);
+  }
+  if (deleteAccountBtn) {
+    deleteAccountBtn.addEventListener('click', handleDeleteAccount);
   }
 
   // Upload zone

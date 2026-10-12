@@ -4,7 +4,7 @@ const multer   = require('multer');
 const { Readable } = require('stream');
 const File     = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
-const recoveryStore = require('../recovery/localRecoveryStore');
+const recoveryStore = require('../recovery/s3RecoveryStore');
 
 // Allowed file types — MIME type allowlist (T1036 fix)
 const ALLOWED_TYPES = [
