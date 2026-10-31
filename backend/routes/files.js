@@ -6,6 +6,17 @@ const File     = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
 const recoveryStore = require('../recovery/s3RecoveryStore');
 
+const {
+  generateBlockchainFileId,
+  calculateCiphertextHash,
+  createIntegrityCommitment,
+  RECORD_TYPE
+} = require('../services/integrityService');
+
+const {
+  anchorIntegrity
+} = require('../services/blockchainService');
+
 // Allowed file types — MIME type allowlist (T1036 fix)
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -36,39 +47,60 @@ const upload = multer({
 
 // ─── UPLOAD ──────────────────────────────────────────
 router.post('/upload', upload.single('file'), async (req, res) => {
+  let uploadedS3Key = null;
+  let savedFile = null;
+
   try {
     console.log('File received:', req.file?.originalname, req.file?.size);
-    console.log('S3 bucket:', process.env.AWS_BUCKET_NAME);
+
     const { originalName, wrappedCEK, fileIV, cekIV } = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file received' });
     }
 
-    // T1036 — MIME type validation
-    // T1036 — validate the original MIME type sent from client
-    const clientMimeType = req.body.mimeType || '';
+    if (!wrappedCEK || !fileIV || !cekIV) {
+      return res.status(400).json({
+        error: 'Missing encryption metadata'
+      });
+    }
 
-    // Store mimeType in DB too — useful for future download Content-Type headers
-    
-    // T1059 — sanitise filename before storing
+    // Sanitize filename.
     const safeName = sanitizeFilename(originalName || req.file.originalname);
 
-    const s3Key = `${req.user.userId}/${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    await uploadToS3(req.file.buffer, s3Key);
+    // Generate a random opaque identifier for the blockchain.
+    const blockchainFileId = generateBlockchainFileId();
 
+    // Initial integrity version.
+    const integrityVersion = 1;
+
+    // Upload actual encrypted bytes to S3.
+    const s3Key = `${req.user.userId}/${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+    await uploadToS3(req.file.buffer, s3Key);
+    uploadedS3Key = s3Key;
+
+    // Create MongoDB record in PENDING state.
     const newFile = new File({
-      owner:        req.user.userId,
+      owner: req.user.userId,
       originalName: safeName,
-      storagePath:  s3Key,
+      storagePath: s3Key,
+
       wrappedCEK,
       fileIV,
       cekIV,
-      size:         req.file.size
+
+      wrappedCEKVersion: 1,
+
+      blockchainFileId,
+      integrityVersion,
+      integrityStatus: 'PENDING',
+
+      size: req.file.size
     });
 
-
     await newFile.save();
+    savedFile = newFile;
 
     await recoveryStore.append({
       recordType: 'FILE_CEK',
@@ -80,14 +112,85 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
-    res.status(201).json({
-      message: 'File uploaded',
-      fileId: newFile._id
+    // Hash the actual encrypted bytes.
+    const ciphertextHash = calculateCiphertextHash(
+      req.file.buffer
+    );
+
+    // Generate canonical integrity commitment.
+    const commitment = createIntegrityCommitment({
+      blockchainFileId,
+      integrityVersion,
+      ciphertextHash,
+      wrappedCEK,
+      fileIV,
+      cekIV,
+      wrappedCEKVersion: 1
+    });
+
+    // Persist commitment BEFORE submitting blockchain transaction.
+    newFile.integrityCommitment = commitment;
+    await newFile.save();
+
+    // Submit blockchain transaction.
+    const anchorResult = await anchorIntegrity({
+      fileId: blockchainFileId,
+      version: integrityVersion,
+      commitment,
+      recordType: RECORD_TYPE.FILE
+    });
+
+    // Mark ANCHORED only after successful transaction confirmation.
+    newFile.integrityStatus = 'ANCHORED';
+    newFile.blockchainTxHash = anchorResult.transactionHash;
+    newFile.blockchainAnchoredAt = new Date();
+
+    await newFile.save();
+
+    console.log('File successfully uploaded and anchored.');
+
+    return res.status(201).json({
+      message: 'File uploaded and integrity anchored',
+
+      fileId: newFile._id,
+
+      integrity: {
+        status: newFile.integrityStatus,
+        version: newFile.integrityVersion,
+        transactionHash: newFile.blockchainTxHash
+      }
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Upload failed' });
+    console.error('Blockchain-integrated upload failed:', err);
+
+    // Do not delete a saved file automatically.
+    // It may already have an on-chain transaction pending or confirmed.
+    if (savedFile) {
+      return res.status(503).json({
+        error: 'File saved but blockchain anchoring is not confirmed',
+        fileId: savedFile._id,
+        integrityStatus: savedFile.integrityStatus || 'PENDING',
+        message: 'Do not assume this file is integrity-verified. Reconciliation is required.'
+      });
+    }
+
+    // If MongoDB creation never succeeded, remove the uploaded S3 object
+    // to avoid leaving an orphaned object.
+    if (uploadedS3Key) {
+      try {
+        await deleteFromS3(uploadedS3Key);
+      } catch (cleanupError) {
+        console.error(
+          'Failed to clean up orphaned S3 upload:',
+          cleanupError
+        );
+      }
+    }
+
+    return res.status(500).json({
+      error: 'Upload failed'
+    });
   }
 });
 
