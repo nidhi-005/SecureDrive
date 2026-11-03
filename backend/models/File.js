@@ -64,7 +64,7 @@ const fileSchema = new mongoose.Schema({
   // ANCHORED: transaction confirmed.
   integrityStatus: {
     type: String,
-    enum: ['PENDING', 'ANCHORED'],
+    enum: ['PENDING', 'ANCHORED', 'UNVERIFIED', 'INTEGRITY_MISMATCH'],
     default: 'PENDING'
   },
 

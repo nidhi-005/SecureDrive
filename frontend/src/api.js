@@ -188,8 +188,12 @@ async function apiDownload(fileId) {
 
   if (!res.ok) throw new Error('Download failed');
 
-  // Return raw ArrayBuffer — crypto.js will decrypt it
-  return await res.arrayBuffer();
+  // Return ciphertext plus the advisory integrity result. A blockchain
+  // outage or mismatch must not prevent the caller from decrypting/downloading.
+  return {
+    buffer: await res.arrayBuffer(),
+    integrityStatus: res.headers.get('X-Integrity-Status') || 'UNVERIFIED'
+  };
 }
 
 // ─────────────────────────────────────────────────────────────

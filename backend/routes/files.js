@@ -1,8 +1,8 @@
-const express  = require('express');
-const router   = express.Router();
-const multer   = require('multer');
+const express = require('express');
+const router = express.Router();
+const multer = require('multer');
 const { Readable } = require('stream');
-const File     = require('../models/File');
+const File = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
 const recoveryStore = require('../recovery/s3RecoveryStore');
 
@@ -42,7 +42,7 @@ function sanitizeFilename(name) {
 // File goes to RAM temporarily, then straight to S3
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits:  { fileSize: 50 * 1024 * 1024 } // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
 
 // ─── UPLOAD ──────────────────────────────────────────
@@ -132,32 +132,51 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     newFile.integrityCommitment = commitment;
     await newFile.save();
 
-    // Submit blockchain transaction.
-    const anchorResult = await anchorIntegrity({
-      fileId: blockchainFileId,
-      version: integrityVersion,
-      commitment,
-      recordType: RECORD_TYPE.FILE
-    });
 
-    // Mark ANCHORED only after successful transaction confirmation.
-    newFile.integrityStatus = 'ANCHORED';
-    newFile.blockchainTxHash = anchorResult.transactionHash;
-    newFile.blockchainAnchoredAt = new Date();
+    // Submit blockchain transaction (best-effort).
+    let anchorResult = null;
 
-    await newFile.save();
+    try {
+      anchorResult = await anchorIntegrity({
+        fileId: blockchainFileId,
+        version: integrityVersion,
+        commitment,
+        recordType: RECORD_TYPE.FILE
+      });
 
-    console.log('File successfully uploaded and anchored.');
+      // Mark ANCHORED only after successful confirmation.
+      newFile.integrityStatus = 'ANCHORED';
+      newFile.blockchainTxHash = anchorResult.transactionHash;
+      newFile.blockchainAnchoredAt = new Date();
 
+      await newFile.save();
+
+      console.log('File successfully uploaded and anchored.');
+
+    } catch (blockchainError) {
+      // File is already safely stored in S3 and MongoDB.
+      // Keep integrity status as PENDING.
+      console.error(
+        'Blockchain anchoring unavailable. File remains pending:',
+        blockchainError.message
+      );
+
+      newFile.integrityStatus = 'PENDING';
+      await newFile.save();
+    }
+
+    // Return successful upload response because file storage succeeded.
     return res.status(201).json({
-      message: 'File uploaded and integrity anchored',
+      message: anchorResult
+        ? 'File uploaded and integrity anchored'
+        : 'File uploaded. Blockchain integrity anchoring is pending',
 
       fileId: newFile._id,
 
       integrity: {
         status: newFile.integrityStatus,
         version: newFile.integrityVersion,
-        transactionHash: newFile.blockchainTxHash
+        transactionHash: newFile.blockchainTxHash || null
       }
     });
 
@@ -210,7 +229,7 @@ router.get('/', async (req, res) => {
 router.get('/:fileId/meta', async (req, res) => {
   try {
     const file = await File.findOne({
-      _id:   req.params.fileId,
+      _id: req.params.fileId,
       owner: req.user.userId
     });
 
@@ -220,9 +239,9 @@ router.get('/:fileId/meta', async (req, res) => {
 
     res.json({
       originalName: file.originalName,
-      wrappedCEK:   file.wrappedCEK,
-      fileIV:       file.fileIV,
-      cekIV:        file.cekIV
+      wrappedCEK: file.wrappedCEK,
+      fileIV: file.fileIV,
+      cekIV: file.cekIV
     });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch metadata' });
@@ -233,7 +252,7 @@ router.get('/:fileId/meta', async (req, res) => {
 router.get('/:fileId/download', async (req, res) => {
   try {
     const file = await File.findOne({
-      _id:   req.params.fileId,
+      _id: req.params.fileId,
       owner: req.user.userId
     });
 
@@ -262,7 +281,7 @@ router.get('/:fileId/download', async (req, res) => {
 router.delete('/:fileId', async (req, res) => {
   try {
     const file = await File.findOne({
-      _id:   req.params.fileId,
+      _id: req.params.fileId,
       owner: req.user.userId
     });
 

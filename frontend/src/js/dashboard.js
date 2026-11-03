@@ -117,32 +117,63 @@ function handleFileSelect(e) {
 }
 
 // ── UPLOAD ─────────────────────────────────────────────────
+
 async function uploadFile(file) {
   const masterKey = getMasterKey();
-  if (!masterKey) return; // redirected to login by getMasterKey
+  if (!masterKey) return;
 
   const status = document.getElementById('upload-status');
   status.style.display = 'block';
 
+  let uploadSucceeded = false;
+
   try {
     status.textContent = `🔐 Encrypting ${file.name}...`;
+
     const buffer = await file.arrayBuffer();
 
     const { encryptedFile, wrappedCEK, fileIV, cekIV } =
       await encryptFile(buffer, masterKey);
 
     status.textContent = '☁️ Uploading encrypted file...';
-    await apiUpload(encryptedFile, file.name, wrappedCEK, fileIV, cekIV);
+
+    await apiUpload(
+      encryptedFile,
+      file.name,
+      wrappedCEK,
+      fileIV,
+      cekIV
+    );
+
+    uploadSucceeded = true;
 
     status.textContent = '✅ Upload complete!';
-    setTimeout(() => status.style.display = 'none', 2000);
-
     showToast('File encrypted and uploaded!');
-    await loadFiles();
-    document.getElementById('file-input').value = '';
+
   } catch (err) {
-    status.textContent = '❌ ' + err.message;
-    showToast('Upload failed', 'error');
+    console.error('Upload response:', err);
+
+    status.textContent = '⚠️ ' + err.message;
+
+    showToast(
+      'Upload response: ' + err.message,
+      'error'
+    );
+
+  } finally {
+    // Always refresh the dashboard, even when the server
+    // returns an error after successfully saving the file.
+    try {
+      await loadFiles();
+    } catch (refreshError) {
+      console.error('Dashboard refresh failed:', refreshError);
+    }
+
+    document.getElementById('file-input').value = '';
+
+    setTimeout(() => {
+      status.style.display = 'none';
+    }, 3000);
   }
 }
 
@@ -199,7 +230,11 @@ async function downloadFile(fileId, fileName) {
 
   try {
     const meta = await apiGetMeta(fileId);
-    const encryptedBuffer = await apiDownload(fileId);
+
+    const downloadResult = await apiDownload(fileId);
+
+    const encryptedBuffer = downloadResult.buffer;
+    const integrityStatus = downloadResult.integrityStatus;
 
     let cek;
     let recovered = false;
