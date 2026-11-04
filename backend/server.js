@@ -53,7 +53,7 @@ app.use((req, res, next) => {
 
 // Public routes — no token needed
 app.use('/api/auth', require('./routes/auth'));
-
+app.use('/api/auth/did', require('./routes/didAuth'));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
