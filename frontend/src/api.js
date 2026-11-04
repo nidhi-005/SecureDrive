@@ -132,16 +132,16 @@ async function apiUpload(encryptedBuffer, originalName, wrappedCEK, fileIV, cekI
 
   // Convert ArrayBuffer to Blob to send as file
   const blob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
-  formData.append('file',         blob, originalName);
+  formData.append('file', blob, originalName);
   formData.append('originalName', originalName);
-  formData.append('wrappedCEK',   wrappedCEK);
-  formData.append('fileIV',       fileIV);
-  formData.append('cekIV',        cekIV);
+  formData.append('wrappedCEK', wrappedCEK);
+  formData.append('fileIV', fileIV);
+  formData.append('cekIV', cekIV);
 
   const res = await fetch(`${BASE_URL}/files/upload`, {
-    method:  'POST',
+    method: 'POST',
     headers: authHeader(), // JWT token — no Content-Type, FormData sets it
-    body:    formData
+    body: formData
   });
 
   const data = await res.json();
@@ -300,7 +300,7 @@ async function apiRepairFileKey(
 
 async function apiDelete(fileId) {
   const res = await fetch(`${BASE_URL}/files/${fileId}`, {
-    method:  'DELETE',
+    method: 'DELETE',
     headers: authHeader()
   });
 
@@ -324,6 +324,35 @@ async function apiDeleteAccount() {
   return data;
 }
 
+async function apiGetDeletionStatus() {
+  const res = await fetch(`${BASE_URL}/auth/account/deletion-status`, {
+    headers: authHeader()
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not retrieve deletion status');
+  }
+
+  return data;
+}
+
+async function apiCancelAccountDeletion() {
+  const res = await fetch(`${BASE_URL}/auth/account/deletion-cancel`, {
+    method: 'POST',
+    headers: authHeader()
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || 'Could not cancel account deletion');
+  }
+
+  return data;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Helper: check if user is logged in
 // ─────────────────────────────────────────────────────────────
@@ -333,8 +362,7 @@ function isLoggedIn() {
 }
 
 export {
-  apiDelete, apiDeleteAccount, apiDownload,
-  apiGetFileKeyRecovery,
+  apiCancelAccountDeletion, apiDelete, apiDeleteAccount, apiDownload, apiGetDeletionStatus, apiGetFileKeyRecovery,
   apiGetMasterKeyRecovery,
   apiGetMeta,
   apiListFiles,

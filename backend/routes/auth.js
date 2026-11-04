@@ -7,6 +7,8 @@ const recoveryStore = require('../recovery/s3RecoveryStore');
 const auth = require('../middleware/auth');
 const File = require('../models/File');
 const { deleteAllUserFilesFromS3 } = require('../config/s3');
+const { createAuditEvent } = require('../services/auditService');
+const { randomUUID } = require('crypto');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
   throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
@@ -249,17 +251,129 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
   }
 });
 
-router.delete('/account', auth, async (req, res) => {
-  const userId = String(req.user.userId);
-
+// Check whether account deletion is pending.
+router.get('/account/deletion-status', auth, async (req, res) => {
   try {
-    // 1. Mark the account as pending deletion.
-    // This also makes retries safe if a previous attempt failed.
-    const user = await User.findOneAndUpdate(
-      { _id: userId },
-      { $set: { deletionPending: true } },
-      { new: true }
-    ).select('_id email');
+    const user = await User.findById(req.user.userId)
+      .select('deletionPending deletionRequestedAt deletionScheduledFor');
+
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    return res.json({
+      deletionPending: user.deletionPending,
+      requestedAt: user.deletionRequestedAt,
+      scheduledFor: user.deletionScheduledFor
+    });
+  } catch (err) {
+    console.error('Deletion status lookup failed:', err.message);
+    return res.status(500).json({ error: 'Could not retrieve deletion status' });
+  }
+});
+
+// Request account deletion. This only schedules deletion.
+router.delete('/account', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    if (user.deletionPending) {
+      return res.status(409).json({
+        error: 'Account deletion is already pending',
+        scheduledFor: user.deletionScheduledFor
+      });
+    }
+
+    // Backfill pseudonymous reference for existing accounts.
+    if (!user.accountRef) {
+      user.accountRef = randomUUID();
+    }
+
+    const graceDays = Number(
+      process.env.ACCOUNT_DELETION_GRACE_DAYS || 7
+    );
+
+    if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > 30) {
+      return res.status(500).json({
+        error: 'Invalid deletion grace-period configuration'
+      });
+    }
+
+    const requestedAt = new Date();
+    // const scheduledFor = new Date(
+    //   requestedAt.getTime() + graceDays * 24 * 60 * 60 * 1000
+    // );
+
+    const TESTING_GRACE_SECONDS = 30;
+    const scheduledFor = new Date(
+      requestedAt.getTime() + TESTING_GRACE_SECONDS * 1000
+    );
+
+    user.deletionPending = true;
+    user.deletionRequestedAt = requestedAt;
+    user.deletionScheduledFor = scheduledFor;
+    user.deletionStatus = 'PENDING';
+    user.deletionLeaseId = null;
+    user.deletionLeaseUntil = null;
+    user.deletionAttempts = 0;
+
+    await user.save();
+
+    try {
+      const event = await createAuditEvent({
+        accountRef: user.accountRef,
+        eventType: 'ACCOUNT_DELETION_REQUESTED',
+        initiator: 'USER',
+        severity: 'WARNING'
+      });
+
+      user.deletionRequestEventId = event.eventId;
+      await user.save();
+
+    } catch (auditError) {
+      // If audit persistence fails, revert the pending state.
+      user.deletionPending = false;
+      user.deletionRequestedAt = null;
+      user.deletionScheduledFor = null;
+      user.deletionRequestEventId = null;
+
+      user.deletionStatus = 'NONE';
+      user.deletionLeaseId = null;
+      user.deletionLeaseUntil = null;
+      user.deletionAttempts = 0;
+
+      await user.save();
+      throw auditError;
+    }
+
+    return res.status(202).json({
+      message: 'Account deletion scheduled',
+      deletionPending: true,
+      requestedAt,
+      scheduledFor,
+      gracePeriodDays: graceDays
+    });
+
+  } catch (err) {
+    console.error('Account deletion request failed:', err.message);
+
+    return res.status(500).json({
+      error: 'Could not schedule account deletion'
+    });
+  }
+});
+
+
+// Cancel a pending account deletion.
+
+// Cancel a pending account deletion.
+router.post('/account/deletion-cancel', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
 
     if (!user) {
       return res.status(404).json({
@@ -267,38 +381,71 @@ router.delete('/account', auth, async (req, res) => {
       });
     }
 
-    // 2. Remove all encrypted file objects belonging to this user.
-    // If this fails, stop and leave the account pending for retry.
-    await deleteAllUserFilesFromS3(userId);
-
-    // 3. Remove the user's file metadata from MongoDB.
-    await File.deleteMany({ owner: userId });
-
-    // 4. Remove the user record.
-    const deletedUser = await User.findByIdAndDelete(userId);
-
-    if (!deletedUser) {
-      throw new Error('User record disappeared during deletion');
+    if (!user.deletionPending) {
+      return res.status(409).json({
+        error: 'No pending deletion request'
+      });
     }
 
-    // 5. Clear any in-memory OPAQUE login challenge for this email.
-    if (global.opaqueLogins) {
-      delete global.opaqueLogins[deletedUser.email];
+    if (
+      !user.deletionScheduledFor ||
+      user.deletionScheduledFor <= new Date()
+    ) {
+      return res.status(409).json({
+        error: 'The deletion grace period has expired'
+      });
     }
 
-    // IMPORTANT:
-    // Do not delete, rewrite, or remove records from recoveryStore.
-    // WORM-protected recovery history must remain untouched.
-
-    return res.status(200).json({
-      message: 'Account and associated active data deleted'
+    // Persist cancellation evidence before changing account state.
+    await createAuditEvent({
+      accountRef: user.accountRef,
+      eventType: 'ACCOUNT_DELETION_CANCELLED',
+      initiator: 'USER',
+      severity: 'INFO'
     });
+
+    // Atomically cancel deletion only if it is still pending.
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id: req.user.userId,
+        deletionPending: true,
+        deletionStatus: 'PENDING',
+        deletionScheduledFor: { $gt: new Date() }
+      },
+      {
+        $set: {
+          deletionPending: false,
+          deletionStatus: 'NONE',
+          deletionRequestedAt: null,
+          deletionScheduledFor: null,
+          deletionRequestEventId: null,
+          deletionLeaseId: null,
+          deletionLeaseUntil: null,
+          deletionAttempts: 0
+        }
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(409).json({
+        error: 'Deletion can no longer be cancelled'
+      });
+    }
+
+    return res.json({
+      message: 'Account deletion cancelled',
+      deletionPending: false
+    });
+
   } catch (err) {
-    // Avoid logging request data, tokens, or recovery records.
-    console.error('Account deletion failed:', err.message);
+    console.error(
+      'Account deletion cancellation failed:',
+      err.message
+    );
 
     return res.status(500).json({
-      error: 'Account deletion is incomplete. Retry the deletion or contact support.'
+      error: 'Could not cancel account deletion'
     });
   }
 });

@@ -1,7 +1,9 @@
 import {
+  apiCancelAccountDeletion,
   apiDelete,
   apiDeleteAccount,
   apiDownload,
+  apiGetDeletionStatus,
   apiGetFileKeyRecovery,
   apiGetMeta,
   apiListFiles,
@@ -17,6 +19,8 @@ import {
 } from '../crypto.js';
 import { clearSession, getMasterKey, getUserEmail, hydrateSession, isSessionActive } from './keyStore.js';
 
+let accountDeletionPending = false;
+
 // ── Init ───────────────────────────────────────────────────
 async function init() {
   const restored = await hydrateSession();
@@ -27,7 +31,12 @@ async function init() {
   }
 
   document.getElementById('user-email').textContent = getUserEmail() || '';
-  await loadFiles();
+
+  await refreshDeletionStatus();
+
+  if (!accountDeletionPending) {
+    await loadFiles();
+  }
 }
 
 // ── Toast ──────────────────────────────────────────────────
@@ -46,51 +55,132 @@ function handleLogout() {
   window.location.href = 'index.html';
 }
 
+async function refreshDeletionStatus() {
+  try {
+    const status = await apiGetDeletionStatus();
+
+    accountDeletionPending = status.deletionPending;
+
+    const deleteBtn = document.getElementById('delete-account-btn');
+
+    if (deleteBtn) {
+      deleteBtn.textContent = accountDeletionPending
+        ? 'Cancel Scheduled Deletion'
+        : 'Delete Account';
+    }
+
+    if (accountDeletionPending) {
+      const list = document.getElementById('files-list');
+
+      if (list) {
+        list.innerHTML = `
+          <div class="empty-state">
+            Account deletion is scheduled.<br>
+            Normal account activity is temporarily disabled.
+            <br><br>
+            Scheduled for:
+            ${new Date(status.scheduledFor).toLocaleString()}
+          </div>`;
+      }
+
+      const uploadZone = document.getElementById('upload-zone');
+
+      if (uploadZone) {
+        uploadZone.style.display = 'none';
+      }
+    }
+
+  } catch (err) {
+    console.error('Could not retrieve deletion status:', err);
+  }
+}
+
 // ── Delete Account ─────────────────────────────────────────────────
 async function handleDeleteAccount() {
+  const deleteBtn = document.getElementById('delete-account-btn');
+
+  if (accountDeletionPending) {
+    const confirmed = confirm(
+      'Cancel your scheduled account deletion?\n\n' +
+      'Your account will become active again.'
+    );
+
+    if (!confirmed) return;
+
+    if (deleteBtn) deleteBtn.disabled = true;
+
+    try {
+      await apiCancelAccountDeletion();
+
+      accountDeletionPending = false;
+
+      if (deleteBtn) {
+        deleteBtn.textContent = 'Delete Account';
+      }
+
+      const uploadZone = document.getElementById('upload-zone');
+
+      if (uploadZone) {
+        uploadZone.style.display = '';
+      }
+
+      showToast('Account deletion cancelled successfully!');
+      await loadFiles();
+
+    } catch (err) {
+      alert('Cancellation failed: ' + err.message);
+    } finally {
+      if (deleteBtn) deleteBtn.disabled = false;
+    }
+
+    return;
+  }
+
   const email = getUserEmail() || 'your account';
 
   const confirmed = confirm(
-    `Permanently delete ${email}?\n\n` +
-    'This will delete your account, encrypted files stored in S3, ' +
-    'and file metadata. Immutable recovery records will be retained ' +
-    'according to the recovery storage retention policy. ' +
-    'This action cannot be undone.'
+    `Schedule deletion of ${email}?\n\n` +
+    'Your account will enter a restricted state immediately. ' +
+    'Your encrypted files and account credentials will be scheduled ' +
+    'for permanent deletion after the grace period.\n\n' +
+    'You can cancel this request before the deadline.'
   );
 
   if (!confirmed) return;
 
-  const deleteBtn = document.getElementById('delete-account-btn');
-
-  if (deleteBtn) {
-    deleteBtn.disabled = true;
-    deleteBtn.textContent = 'Deleting...';
-  }
+  if (deleteBtn) deleteBtn.disabled = true;
 
   try {
-    await apiDeleteAccount();
+    const result = await apiDeleteAccount();
 
-    // Clear the master key, saved session key, email, and JWT.
-    clearSession();
-    apiLogout();
-
-    alert(
-      'Your account and active data have been deleted. ' +
-      'Immutable recovery records are retained according to the retention policy.'
-    );
-    window.location.replace('index.html');
-  } catch (err) {
-    console.error('Account deletion failed:', err);
-
-    alert(
-      `Account deletion failed: ${err.message}\n\n` +
-      'Check the server logs before attempting again.'
-    );
+    accountDeletionPending = true;
 
     if (deleteBtn) {
-      deleteBtn.disabled = false;
-      deleteBtn.textContent = 'Delete Account';
+      deleteBtn.textContent = 'Cancel Scheduled Deletion';
     }
+
+    const uploadZone = document.getElementById('upload-zone');
+
+    if (uploadZone) {
+      uploadZone.style.display = 'none';
+    }
+
+    await refreshDeletionStatus();
+
+    alert(
+      'Account deletion has been scheduled.\n\n' +
+      'Permanent deletion date: ' +
+      new Date(result.scheduledFor).toLocaleString() +
+      '\n\nYou can cancel it using the same button before this deadline.'
+    );
+
+  } catch (err) {
+    console.error('Account deletion request failed:', err);
+
+    alert('Could not schedule deletion: ' + err.message);
+
+  } finally {
+    if (deleteBtn) deleteBtn.disabled = false;
   }
 }
 

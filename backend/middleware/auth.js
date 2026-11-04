@@ -19,7 +19,7 @@ module.exports = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.userId)
-      .select('_id email deletionPending');
+      .select('_id email deletionPending accountRef');
 
     if (!user) {
       return res.status(401).json({
@@ -27,24 +27,30 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    // Permit a retry of account deletion, but no other activity.
-    const isDeletionRetry =
-      req.method === 'DELETE' && req.path === '/account';
+    // Allow only deletion management while deletion is pending.
+    const allowedDuringDeletion =
+      (req.method === 'DELETE' && req.path === '/account') ||
+      (req.method === 'POST' &&
+        req.path === '/account/deletion-cancel') ||
+      (req.method === 'GET' &&
+        req.path === '/account/deletion-status');
 
-    if (user.deletionPending && !isDeletionRetry) {
+    if (user.deletionPending && !allowedDuringDeletion) {
       return res.status(403).json({
-        error: 'Account deletion is in progress'
+        error: 'Account deletion is in progress',
+        deletionPending: true
       });
     }
 
     req.user = {
       userId: String(user._id),
       email: user.email,
+      accountRef: user.accountRef,
       deletionPending: user.deletionPending
     };
 
     next();
-    
+
   } catch (err) {
     if (err.name === 'JsonWebTokenError' ||
       err.name === 'TokenExpiredError' ||

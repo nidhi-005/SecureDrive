@@ -3,7 +3,9 @@ const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
 const auth     = require('./middleware/auth');
-
+const {
+  startDeletionWorker
+} = require('./workers/accountDeletionWorker');
 const app = express();
 app.use(cors({
   origin: [
@@ -34,6 +36,12 @@ app.use((req, res, next) => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("Connected DB:", mongoose.connection.name);
+
+    startDeletionWorker();
+  })
+  .catch(err => {
+    console.error('MongoDB connection failed:', err);
+    process.exit(1);
   });
 
 const rateLimit = require('express-rate-limit');

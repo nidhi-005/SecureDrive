@@ -2,7 +2,8 @@ const {
   S3Client,
   PutObjectCommand,
   ListObjectsV2Command,
-  GetObjectCommand
+  GetObjectCommand,
+  DeleteObjectsCommand
 } = require('@aws-sdk/client-s3');
 
 const { randomUUID } = require('crypto');
@@ -114,6 +115,56 @@ class S3RecoveryStore extends RecoveryStore {
       record.userId === String(userId) &&
       record.fileId === String(fileId)
     );
+  }
+
+  async deleteUserRecords(userId) {
+    if (!BUCKET_NAME) {
+      throw new Error('AWS_RECOVERY_BUCKET_NAME is not configured');
+    }
+
+    validateId(userId, 'userId');
+
+    const prefix = `users/${userId}/`;
+    let continuationToken;
+
+    do {
+      const response = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: BUCKET_NAME,
+          Prefix: prefix,
+          ContinuationToken: continuationToken
+        })
+      );
+
+      const objects = (response.Contents || [])
+        .filter(object => object.Key)
+        .map(object => ({ Key: object.Key }));
+
+      if (objects.length > 0) {
+        const result = await s3.send(
+          new DeleteObjectsCommand({
+            Bucket: BUCKET_NAME,
+            Delete: {
+              Objects: objects,
+              Quiet: false
+            }
+          })
+        );
+
+        if (result.Errors && result.Errors.length > 0) {
+          throw new Error(
+            `Failed to delete ${result.Errors.length} recovery object(s)`
+          );
+        }
+      }
+
+      continuationToken = response.IsTruncated
+        ? response.NextContinuationToken
+        : undefined;
+
+    } while (continuationToken);
+
+    return true;
   }
 
 }
