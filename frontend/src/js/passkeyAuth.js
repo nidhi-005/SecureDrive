@@ -11,7 +11,8 @@ function showMessage(message, isError = false) {
 
   if (element) {
     element.textContent = message;
-    element.style.color = isError ? '#dc2626' : '#15803d';
+    element.style.display = 'block';
+    element.style.color = isError ? '#f87171' : '#6ee7b7';
   }
 }
 

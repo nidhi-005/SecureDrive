@@ -226,8 +226,7 @@ router.post('/encryption-setup', auth, async (req, res) => {
     // the initial wrapped Master Key.
     const user = await User.findOneAndUpdate({
       _id: req.user.userId,
-      authMethod: 'did',
-      did: { $exists: true, $ne: null },
+      authMethod: { $in: ['did', 'webauthn'] },
       deletionPending: { $ne: true },
       $and: [
         { $or: [{ wrappedMasterKey: { $exists: false } }, { wrappedMasterKey: null }] },
@@ -240,8 +239,13 @@ router.post('/encryption-setup', auth, async (req, res) => {
 
     if (!user) {
       const existing = await User.findById(req.user.userId).select('did authMethod wrappedMasterKey masterKeyIV encryptionSalt deletionPending');
-      if (!existing || existing.authMethod !== 'did' || !existing.did) {
-        return res.status(403).json({ error: 'DID account required' });
+      if (
+        !existing ||
+        !['did', 'webauthn'].includes(existing.authMethod)
+      ) {
+        return res.status(403).json({
+          error: 'Authenticated account required'
+        });
       }
       if (existing.deletionPending) return res.status(403).json({ error: 'Account deletion is in progress' });
       if (
