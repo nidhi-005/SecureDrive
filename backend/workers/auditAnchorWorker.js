@@ -43,7 +43,7 @@ async function markAnchored(event, leaseId, {
     {
       $set: {
         blockchainStatus: 'ANCHORED',
-        transactionHash,
+        transactionHash: transactionHash || event.transactionHash || null,
         anchoredAt,
         lastAnchorError: null,
         nextRetryAt: null,

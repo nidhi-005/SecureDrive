@@ -8,6 +8,18 @@ const { getAuditEvent } = require('../services/blockchainService');
 // All routes in this file must be authenticated.
 // The auth middleware is mounted in server.js.
 
+function requireAccountRef(req, res) {
+  if (!req.user || !req.user.accountRef) {
+    res.status(409).json({
+      error: 'Account reference is missing. Contact the administrator.',
+      code: 'ACCOUNT_REFERENCE_MISSING'
+    });
+    return false;
+  }
+
+  return true;
+}
+
 // Pagination helper
 function getPagination(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
@@ -66,6 +78,7 @@ function buildFilters(query) {
 // GET /api/audit/me
 // Return events belonging only to the authenticated user.
 router.get('/me', async (req, res) => {
+  if (!requireAccountRef(req, res)) return;
   try {
     const { page, limit, skip } = getPagination(req.query);
     const filters = buildFilters(req.query);
@@ -75,7 +88,7 @@ router.get('/me', async (req, res) => {
     const [events, total] = await Promise.all([
       AuditEvent.find(filters)
         .select(
-          'eventId eventType initiator severity timestamp commitment blockchainStatus transactionHash anchoredAt lastAnchorError'
+          'eventId eventType initiator severity timestamp commitment blockchainStatus transactionHash anchoredAt'
         )
         .sort({ timestamp: -1 })
         .skip(skip)
@@ -106,6 +119,7 @@ router.get('/me', async (req, res) => {
 // GET /api/audit/me/stats
 // User-specific dashboard statistics.
 router.get('/me/stats', async (req, res) => {
+  if (!requireAccountRef(req, res)) return;
   try {
     const accountRef = req.user.accountRef;
 
@@ -157,11 +171,25 @@ router.get('/admin', async (req, res) => {
     }
 
     const { page, limit, skip } = getPagination(req.query);
+
     const filters = buildFilters(req.query);
+
+    // Validate accountRef if provided.
+    if (req.query.accountRef !== undefined) {
+      if (
+        typeof req.query.accountRef !== 'string' ||
+        req.query.accountRef.length > 100
+      ) {
+        return res.status(400).json({
+          error: 'Invalid account reference'
+        });
+      }
+    }
 
     if (req.query.accountRef) {
       filters.accountRef = req.query.accountRef;
     }
+
 
     const [events, total] = await Promise.all([
       AuditEvent.find(filters)
@@ -210,7 +238,7 @@ router.get('/admin/stats', async (req, res) => {
       pending,
       failed,
       critical,
-      accounts,
+      accountsWithEvents,
       eventTypes
     ] = await Promise.all([
       AuditEvent.countDocuments(),
@@ -238,7 +266,7 @@ router.get('/admin/stats', async (req, res) => {
       pending,
       failed,
       critical,
-      accounts: accounts.length,
+      accountsWithEvents: accountsWithEvents.length,
       eventTypes
     });
   } catch (err) {
@@ -268,6 +296,12 @@ router.get('/:eventId/verify', async (req, res) => {
       return res.status(404).json({
         error: 'Audit event not found'
       });
+    }
+
+    // Users must have a valid accountRef.
+    // Admins can verify events belonging to any account.
+    if (req.user.role !== 'ADMIN' && !requireAccountRef(req, res)) {
+      return;
     }
 
     // Users can verify only their own events.

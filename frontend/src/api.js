@@ -353,6 +353,75 @@ async function apiCancelAccountDeletion() {
   return data;
 }
 
+// ============================================================
+// AUDIT — USER AND ADMIN DASHBOARD
+// ============================================================
+
+async function auditRequest(endpoint) {
+  const res = await fetch(`${BASE_URL}/audit${endpoint}`, {
+    headers: authHeader()
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const error = new Error(data.error || 'Audit request failed');
+    error.status = res.status;
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+}
+
+// Get logged-in user's audit events
+async function apiGetMyAudit(params = {}) {
+  const query = new URLSearchParams(params).toString();
+
+  return auditRequest(`/me${query ? `?${query}` : ''}`);
+}
+
+// Get logged-in user's audit statistics
+async function apiGetMyAuditStats() {
+  return auditRequest('/me/stats');
+}
+
+// Get all audit events (ADMIN only)
+async function apiGetAdminAudit(params = {}) {
+  const query = new URLSearchParams(params).toString();
+
+  return auditRequest(`/admin${query ? `?${query}` : ''}`);
+}
+
+// Get global audit statistics (ADMIN only)
+async function apiGetAdminAuditStats() {
+  return auditRequest('/admin/stats');
+}
+
+// Verify one event against the blockchain
+async function apiVerifyAuditEvent(eventId) {
+  const res = await fetch(
+    `${BASE_URL}/audit/${encodeURIComponent(eventId)}/verify`,
+    {
+      headers: authHeader()
+    }
+  );
+
+  const data = await res.json().catch(() => ({}));
+
+  // 503 is a meaningful verification result:
+  // the blockchain may be unavailable, but the dashboard
+  // should still be able to display that result.
+  if (!res.ok && res.status !== 503) {
+    throw new Error(data.error || 'Could not verify audit event');
+  }
+
+  return {
+    ...data,
+    httpStatus: res.status
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Helper: check if user is logged in
 // ─────────────────────────────────────────────────────────────
@@ -362,10 +431,11 @@ function isLoggedIn() {
 }
 
 export {
-  apiCancelAccountDeletion, apiDelete, apiDeleteAccount, apiDownload, apiGetDeletionStatus, apiGetFileKeyRecovery,
+  apiCancelAccountDeletion, apiDelete, apiDeleteAccount, apiDownload, apiGetAdminAudit,
+  apiGetAdminAuditStats, apiGetDeletionStatus, apiGetFileKeyRecovery,
   apiGetMasterKeyRecovery,
-  apiGetMeta,
-  apiListFiles,
+  apiGetMeta, apiGetMyAudit,
+  apiGetMyAuditStats, apiListFiles,
   apiLoginFinish,
   apiLoginStart,
   apiLogout,
@@ -373,7 +443,7 @@ export {
   apiRepairMasterKey,
   apiSignupFinish,
   apiSignupRequest,
-  apiUpload, base64ToUint8Array,
+  apiUpload, apiVerifyAuditEvent, base64ToUint8Array,
   isLoggedIn,
   uint8ArrayToBase64
 };

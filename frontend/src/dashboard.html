@@ -48,10 +48,163 @@
 
   </div>
 
+  <section class="audit-section" id="auditSection">
+    <div class="audit-inner">
+
+      <div class="section-heading">
+        <div>
+          <h2>Security & Audit Activity</h2>
+          <p>Track account activity and verify audit events.</p>
+        </div>
+
+        <button id="refreshAuditBtn" class="secondary-btn">
+          Refresh
+        </button>
+      </div>
+
+      <!-- USER STATISTICS -->
+      <div class="audit-stats" id="userAuditStats">
+        <div class="audit-stat-card">
+          <span>Total Events</span>
+          <strong id="auditTotal">--</strong>
+        </div>
+        <div class="audit-stat-card">
+          <span>Blockchain Anchored</span>
+          <strong id="auditAnchored">--</strong>
+        </div>
+        <div class="audit-stat-card">
+          <span>Pending</span>
+          <strong id="auditPending">--</strong>
+        </div>
+        <div class="audit-stat-card">
+          <span>Failed</span>
+          <strong id="auditFailed">--</strong>
+        </div>
+        <div class="audit-stat-card">
+          <span>Critical Events</span>
+          <strong id="auditCritical">--</strong>
+        </div>
+      </div>
+
+      <!-- ADMIN DASHBOARD -->
+      <div id="adminAuditSection" class="admin-audit-section hidden">
+
+        <div class="section-heading">
+          <div>
+            <h2>Administrator Overview</h2>
+            <p>System-wide audit activity.</p>
+          </div>
+          <span class="admin-label">ADMIN</span>
+        </div>
+
+        <div class="audit-stats">
+          <div class="audit-stat-card">
+            <span>All Events</span>
+            <strong id="adminAuditTotal">--</strong>
+          </div>
+          <div class="audit-stat-card">
+            <span>Anchored</span>
+            <strong id="adminAuditAnchored">--</strong>
+          </div>
+          <div class="audit-stat-card">
+            <span>Pending</span>
+            <strong id="adminAuditPending">--</strong>
+          </div>
+          <div class="audit-stat-card">
+            <span>Failed</span>
+            <strong id="adminAuditFailed">--</strong>
+          </div>
+          <div class="audit-stat-card">
+            <span>Accounts With Events</span>
+            <strong id="adminAuditAccounts">--</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- FILTERS -->
+      <div class="audit-filters">
+        <select id="auditEventFilter">
+          <option value="">All event types</option>
+          <option value="ACCOUNT_CREATED">Account Created</option>
+          <option value="ACCOUNT_DELETION_REQUESTED">Deletion Requested</option>
+          <option value="ACCOUNT_DELETION_CANCELLED">Deletion Cancelled</option>
+          <option value="ACCOUNT_DELETED">Account Deleted</option>
+          <option value="LOGIN_SUCCESS">Login Success</option>
+          <option value="LOGIN_FAILED">Login Failed</option>
+          <option value="FILE_UPLOADED">File Uploaded</option>
+          <option value="FILE_DELETED">File Deleted</option>
+          <option value="FILE_CEK_RECOVERED">File Key Recovered</option>
+          <option value="FILE_CEK_REPAIRED">File Key Repaired</option>
+          <option value="MASTER_KEY_RECOVERED">Master Key Recovered</option>
+          <option value="MASTER_KEY_REPAIRED">Master Key Repaired</option>
+          <option value="MASTER_KEY_RECOVERY_FAILED">Master Key Recovery Failed</option>
+          <option value="INTEGRITY_VERIFIED">Integrity Verified</option>
+          <option value="INTEGRITY_MISMATCH">Integrity Mismatch</option>
+        </select>
+
+        <select id="auditSeverityFilter">
+          <option value="">All severities</option>
+          <option value="INFO">Info</option>
+          <option value="WARNING">Warning</option>
+          <option value="CRITICAL">Critical</option>
+        </select>
+
+        <select id="auditStatusFilter">
+          <option value="">All blockchain statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="ANCHORED">Anchored</option>
+          <option value="FAILED">Failed</option>
+        </select>
+
+        <input id="adminAccountFilter" type="text" placeholder="Account reference (admin)" class="hidden" />
+
+        <button id="applyAuditFiltersBtn" class="primary-btn">
+          Apply Filters
+        </button>
+      </div>
+
+      <!-- AUDIT EVENTS -->
+      <div id="auditEventsContainer" class="audit-events">
+        <p class="audit-empty">Loading audit activity...</p>
+      </div>
+
+      <!-- PAGINATION -->
+      <div class="audit-pagination">
+        <button id="auditPrevBtn" class="secondary-btn" disabled>
+          Previous
+        </button>
+        <span id="auditPageInfo">Page 1</span>
+        <button id="auditNextBtn" class="secondary-btn">
+          Next
+        </button>
+      </div>
+
+  </section>
+
+  <!-- EVENT VERIFICATION MODAL -->
+  <div id="auditVerifyModal" class="audit-modal hidden">
+    <div class="audit-modal-content">
+      <button id="closeAuditModalBtn" class="modal-close">&times;</button>
+
+      <h2>Blockchain Verification</h2>
+
+      <p id="verifyEventId"></p>
+
+      <div id="verifyResult" class="verify-result">
+        Select an event to verify.
+      </div>
+
+      <div id="verifyDetails"></div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div id="toast"></div>
 
   <script type="module" src="js/dashboard.js"></script>
+  </div>
+  </section>
 </body>
 
 </html>
