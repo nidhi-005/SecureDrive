@@ -99,9 +99,10 @@ router.post('/register/options', async (req, res) => {
       attestationType: 'none',
 
       authenticatorSelection: {
-        residentKey: 'required',
-        userVerification: 'required'
-      },
+      authenticatorAttachment: 'platform',
+      residentKey: 'required',
+      userVerification: 'required'
+    },
 
       timeout: 60000
     });
