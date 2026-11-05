@@ -87,6 +87,7 @@ export function clearSession() {
     sessionStorage.removeItem(SESSION_EMAIL_KEY);
     sessionStorage.removeItem(SESSION_MASTER_KEY);
     sessionStorage.removeItem('token');
+    sessionStorage.removeItem('secureDriveUserEmail');
   } catch (error) {
     // Ignore storage issues.
   }

@@ -23,6 +23,7 @@ function saveToken(token) {
 
 function clearToken() {
   sessionStorage.removeItem('token');
+  sessionStorage.removeItem('secureDriveUserEmail');
 }
 
 // Helper: build auth header for protected routes
@@ -110,6 +111,65 @@ async function apiLoginFinish(email, finishLoginRequest) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login verification failed');
   saveToken(data.token);
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH — DID challenge / registration / login
+// ─────────────────────────────────────────────────────────────
+
+async function apiDidChallenge(email, did, purpose) {
+  const res = await fetch(`${BASE_URL}/auth/did/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, purpose })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not create DID challenge');
+  return data;
+}
+
+async function apiDidRegister(email, did, challengeId, signature) {
+  const res = await fetch(`${BASE_URL}/auth/did/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, challengeId, signature })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'DID registration failed');
+  saveToken(data.token);
+  sessionStorage.setItem('secureDriveUserEmail', data.email || email);
+  return data;
+}
+
+async function apiDidLogin(email, did, challengeId, signature) {
+  const res = await fetch(`${BASE_URL}/auth/did/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, challengeId, signature })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'DID login failed');
+  saveToken(data.token);
+  sessionStorage.setItem('secureDriveUserEmail', data.email || email);
+  return data;
+}
+
+async function apiDidStatus() {
+  const res = await fetch(`${BASE_URL}/auth/did/status`, { headers: authHeader() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not check DID account status');
+  return data;
+}
+
+async function apiDidEncryptionSetup(encryptionSalt, wrappedMasterKey, masterKeyIV) {
+  const res = await fetch(`${BASE_URL}/auth/did/encryption-setup`, {
+    method: 'POST',
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ encryptionSalt, wrappedMasterKey, masterKeyIV })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not configure file encryption');
   return data;
 }
 
@@ -333,7 +393,8 @@ function isLoggedIn() {
 }
 
 export {
-  apiDelete, apiDeleteAccount, apiDownload,
+  apiDelete, apiDeleteAccount, apiDidChallenge, apiDidEncryptionSetup, apiDidStatus,
+  apiDidLogin, apiDidRegister, apiDownload,
   apiGetFileKeyRecovery,
   apiGetMasterKeyRecovery,
   apiGetMeta,

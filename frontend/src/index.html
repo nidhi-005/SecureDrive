@@ -1,89 +1,107 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SecureDrive</title>
+  <title>SecureDrive — Secure Authentication</title>
   <link rel="stylesheet" href="css/auth.css">
 </head>
 
 <body>
-
-  <div id="auth-screen">
+  <main id="auth-screen">
     <div class="auth-box">
 
       <span class="logo">Secure<span>Drive</span></span>
 
-      <h2>Welcome back</h2>
+      <h2>Welcome to SecureDrive</h2>
+
       <p class="subtitle">
-        Your files, encrypted before they leave your device.
+        Secure, passwordless access to your files.
       </p>
 
-      <div class="tabs">
-        <div class="tab active" id="tab-login">Login</div>
-        <div class="tab" id="tab-signup">Sign Up</div>
-      </div>
+      <section id="passkey-section">
 
-      <!-- LOGIN -->
-      <div id="login-form">
-        <label for="login-email">Email</label>
+        <label for="passkey-email">Email address</label>
+
         <input
           type="email"
-          id="login-email"
+          id="passkey-email"
           placeholder="you@example.com"
-          autocomplete="email"
+          autocomplete="username webauthn"
+          required
         >
 
-        <label for="login-password">Password</label>
-        <input
-          type="password"
-          id="login-password"
-          placeholder="Your password"
-          autocomplete="current-password"
-        >
+        <div id="passkey-message" class="error-msg" role="status"></div>
 
-        <div class="error-msg" id="login-error"></div>
-
-        <button class="btn-primary" id="login-btn">
-          Login
+        <button
+          type="button"
+          class="btn-primary"
+          id="passkey-register-btn">
+          Create account with Passkey
         </button>
-      </div>
 
-      <!-- SIGN UP -->
-      <div id="signup-form" style="display:none">
+        <button
+          type="button"
+          class="btn-secondary"
+          id="passkey-login-btn">
+          Sign in with Passkey
+        </button>
 
-        <label for="signup-email">Email</label>
-        <input
-          type="email"
-          id="signup-email"
-          placeholder="you@example.com"
-          autocomplete="email"
-        >
+      </section>
 
-        <label for="signup-password">Password</label>
+      <section id="encryption-setup" style="display:none">
+
+        <h2>Protect your files</h2>
+
+        <p class="helper-text">
+          Create a separate encryption password to protect your
+          SecureDrive Master Key. This password is independent
+          of your passkey.
+        </p>
+
+        <label for="encryption-password">
+          File encryption password
+        </label>
+
         <input
           type="password"
-          id="signup-password"
-          placeholder="Min. 8 characters"
+          id="encryption-password"
+          placeholder="Create encryption password"
           autocomplete="new-password"
         >
 
-        <div class="error-msg" id="signup-error"></div>
+        <label for="encryption-password-confirm">
+          Confirm encryption password
+        </label>
 
-        <button class="btn-primary" id="signup-btn">
-          Create Account
+        <input
+          type="password"
+          id="encryption-password-confirm"
+          placeholder="Confirm encryption password"
+          autocomplete="new-password"
+        >
+
+        <div id="encryption-message" class="error-msg" role="status"></div>
+
+        <button
+          type="button"
+          class="btn-primary"
+          id="encryption-setup-btn">
+          Set up file encryption
         </button>
-      </div>
 
-      <div class="auth-note">
-        🔒 Your password never leaves your device.<br>
-        All encryption uses AES-256-GCM via Web Crypto API.
-      </div>
+      </section>
+
+      <p class="auth-note">
+        Authentication uses WebAuthn passkeys.
+        File encryption uses AES-256-GCM.
+        Your passkey private key is managed by your device's authenticator.
+      </p>
 
     </div>
-  </div>
+  </main>
 
-  <script type="module" src="js/auth.js"></script>
-
+  <script type="module" src="/src/js/passkeyAuth.js"></script>
 </body>
 </html>

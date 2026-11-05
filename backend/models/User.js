@@ -31,8 +31,17 @@ const userSchema = new mongoose.Schema({
   // DID authentication fields. A user may temporarily retain OPAQUE during migration.
   did: { type: String, unique: true, sparse: true },
   didMethod: { type: String, enum: ['did:key'], default: undefined },
-  authMethod: { type: String, enum: ['opaque', 'did', 'hybrid'], default: 'opaque' },
+  authMethod: {
+  type: String,
+  enum: ['opaque', 'did', 'hybrid', 'webauthn'],
+  default: 'opaque'
+},
 
+// Random WebAuthn user handle. Never use the email as this identifier.
+webauthnUserID: {
+  type: String,
+  default: undefined
+},
   // Legacy OPAQUE authentication record remains optional for DID-only accounts.
   opaqueRegistrationRecord: { type: String, required: false },
 
