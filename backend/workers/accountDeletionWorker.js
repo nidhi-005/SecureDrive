@@ -88,20 +88,22 @@ async function processDeletion(user) {
   await deleteAllUserFilesFromS3(userId);
 
   // 2. Delete all recovery records from the recovery S3 bucket.
-//   await verifyLease();
-//   await recoveryStore.deleteUserRecords(userId);
+  //   await verifyLease();
+  //   await recoveryStore.deleteUserRecords(userId);
 
   // 3. Delete file metadata and wrapped CEKs from MongoDB.
   await verifyLease();
   await File.deleteMany({ owner: user._id });
 
+
   // 4. Persist the final audit event.
-  // Check first so retries do not create duplicate completion events.
+  // Use the deletion request event ID to identify this deletion operation.
   await verifyLease();
 
   const existingEvent = await AuditEvent.findOne({
     accountRef,
-    eventType: 'ACCOUNT_DELETED'
+    eventType: 'ACCOUNT_DELETED',
+    relatedEventId: user.deletionRequestEventId
   });
 
   if (!existingEvent) {
@@ -109,9 +111,11 @@ async function processDeletion(user) {
       accountRef,
       eventType: 'ACCOUNT_DELETED',
       initiator: 'SYSTEM',
-      severity: 'CRITICAL'
+      severity: 'CRITICAL',
+      relatedEventId: user.deletionRequestEventId
     });
   }
+
 
   // 5. Permanently remove the account.
   // The lease condition prevents a stale worker from deleting it.

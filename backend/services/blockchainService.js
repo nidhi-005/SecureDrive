@@ -224,6 +224,44 @@ async function anchorIntegrity({
   };
 }
 
+async function anchorAuditEvent({ eventId, commitment }) {
+  validateBytes32(eventId, 'eventId');
+  validateBytes32(commitment, 'commitment');
+
+  const { contract } = await getBlockchain();
+
+  const tx = await contract.anchorAuditEvent(
+    eventId,
+    commitment
+  );
+
+  const receipt = await tx.wait();
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error('Audit anchoring transaction failed');
+  }
+
+  return {
+    transactionHash: tx.hash,
+    blockNumber: receipt.blockNumber,
+    status: 'ANCHORED'
+  };
+}
+
+async function getAuditEvent(eventId) {
+  validateBytes32(eventId, 'eventId');
+
+  const { contract } = await getBlockchain();
+
+  const record = await contract.getAuditEvent(eventId);
+
+  return {
+    commitment: record.commitment,
+    anchoredAt: BigInt(record.anchoredAt.toString()),
+    signer: record.signer,
+    exists: record.exists
+  };
+}
 
 module.exports = {
   getBlockchain,
@@ -231,5 +269,7 @@ module.exports = {
   getLatestIntegrity,
   getHistoricalIntegrity,
   getLatestVersion,
-  anchorIntegrity
+  anchorIntegrity,
+  anchorAuditEvent,
+  getAuditEvent
 };

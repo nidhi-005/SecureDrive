@@ -19,7 +19,7 @@ module.exports = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.userId)
-      .select('_id email deletionPending accountRef');
+      .select('_id email deletionPending accountRef role');
 
     if (!user) {
       return res.status(401).json({
@@ -46,7 +46,8 @@ module.exports = async (req, res, next) => {
       userId: String(user._id),
       email: user.email,
       accountRef: user.accountRef,
-      deletionPending: user.deletionPending
+      deletionPending: user.deletionPending,
+      role: user.role
     };
 
     next();

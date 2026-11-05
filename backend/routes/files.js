@@ -5,6 +5,7 @@ const { Readable } = require('stream');
 const File = require('../models/File');
 const { uploadToS3, downloadFromS3, deleteFromS3 } = require('../config/s3');
 const recoveryStore = require('../recovery/s3RecoveryStore');
+const { createAuditEvent } = require('../services/auditService');
 
 const {
   generateBlockchainFileId,
@@ -44,6 +45,15 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB
 });
+
+
+async function recordAudit(data) {
+  try {
+    await createAuditEvent(data);
+  } catch (error) {
+    console.error('Audit event creation failed:', error.message);
+  }
+}
 
 // ─── UPLOAD ──────────────────────────────────────────
 router.post('/upload', upload.single('file'), async (req, res) => {
@@ -101,6 +111,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     await newFile.save();
     savedFile = newFile;
+
+    await recordAudit({
+      accountRef: req.user.accountRef,
+      eventType: 'FILE_UPLOADED',
+      initiator: 'USER',
+      severity: 'INFO'
+    });
 
     await recoveryStore.append({
       recordType: 'FILE_CEK',
@@ -293,6 +310,13 @@ router.delete('/:fileId', async (req, res) => {
     await deleteFromS3(file.storagePath);
     await File.findByIdAndDelete(req.params.fileId);
 
+    await recordAudit({
+      accountRef: req.user.accountRef,
+      eventType: 'FILE_DELETED',
+      initiator: 'USER',
+      severity: 'WARNING'
+    });
+
     res.json({ message: 'File deleted' });
 
   } catch (err) {
@@ -368,6 +392,13 @@ router.post('/:fileId/recovery/repair', async (req, res) => {
       wrappedKey: wrappedCEK,
       iv: cekIV,
       createdAt: new Date().toISOString()
+    });
+
+    await recordAudit({
+      accountRef: req.user.accountRef,
+      eventType: 'FILE_CEK_REPAIRED',
+      initiator: 'USER',
+      severity: 'WARNING'
     });
 
     res.json({

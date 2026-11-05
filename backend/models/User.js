@@ -8,6 +8,13 @@ const userSchema = new mongoose.Schema({
   wrappedMasterKey: { type: String, required: true },
   masterKeyIV: { type: String, required: true },
 
+  role: {
+    type: String,
+    enum: ['USER', 'ADMIN'],
+    default: 'USER',
+    required: true
+  },
+
   // Version of the currently active wrapped Master Key.
   wrappedMasterKeyVersion: {
     type: Number,

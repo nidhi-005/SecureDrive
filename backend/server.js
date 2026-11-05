@@ -2,10 +2,11 @@ require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
 const mongoose = require('mongoose');
+const rateLimit = require('express-rate-limit');
 const auth     = require('./middleware/auth');
-const {
-  startDeletionWorker
-} = require('./workers/accountDeletionWorker');
+const { startDeletionWorker } = require('./workers/accountDeletionWorker');
+const { startAuditAnchorWorker } = require('./workers/auditAnchorWorker');
+
 const app = express();
 app.use(cors({
   origin: [
@@ -32,20 +33,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("Connected DB:", mongoose.connection.name);
-
-    startDeletionWorker();
-  })
-  .catch(err => {
-    console.error('MongoDB connection failed:', err);
-    process.exit(1);
-  });
-
-const rateLimit = require('express-rate-limit');
-
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,                  // max 100 requests per IP
@@ -69,5 +56,20 @@ app.get('/api/health', (req, res) => {
 // Protected routes — token required for everything below
 app.use('/api/files', auth, require('./routes/files'));
 
+app.use('/api/audit', auth, require('./routes/audit'));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("Connected DB:", mongoose.connection.name);
+
+    startDeletionWorker();
+    startAuditAnchorWorker();
+  })
+  .catch(err => {
+    console.error('MongoDB connection failed:', err);
+    process.exit(1);
+  });

@@ -5,12 +5,12 @@ async function createAuditEvent({
   accountRef,
   eventType,
   initiator = 'USER',
-  severity = 'INFO'
+  severity = 'INFO',
+  relatedEventId = null
 }) {
   const eventId = '0x' + crypto.randomBytes(32).toString('hex');
   const timestamp = new Date();
 
-  // Keep this exact field order stable for commitment verification.
   const payload = {
     eventId,
     accountRef,
@@ -20,8 +20,12 @@ async function createAuditEvent({
     timestamp: timestamp.toISOString()
   };
 
-  const commitment = '0x' + crypto
-    .createHash('sha256')
+  // Include the reference in the commitment only when provided.
+  if (relatedEventId) {
+    payload.relatedEventId = relatedEventId;
+  }
+
+  const commitment = '0x' + crypto.createHash('sha256')
     .update(JSON.stringify(payload))
     .digest('hex');
 

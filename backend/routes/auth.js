@@ -16,6 +16,14 @@ if (!process.env.OPAQUE_SERVER_SETUP) {
 
 const OPAQUE_SERVER_SETUP = process.env.OPAQUE_SERVER_SETUP;
 
+async function recordAudit(data) {
+  try {
+    await createAuditEvent(data);
+  } catch (error) {
+    console.error('Audit event creation failed:', error.message);
+  }
+}
+
 router.post('/signup-request', async (req, res) => {
   try {
     const { email, registrationRequest } = req.body;
@@ -71,6 +79,13 @@ router.post('/signup-finish', async (req, res) => {
       wrappedKey: wrappedMasterKey,
       iv: masterKeyIV,
       createdAt: new Date().toISOString()
+    });
+
+    await recordAudit({
+      accountRef: user.accountRef,
+      eventType: 'ACCOUNT_CREATED',
+      initiator: 'USER',
+      severity: 'INFO'
     });
 
     const token = jwt.sign(
@@ -170,6 +185,13 @@ router.post('/login-finish', async (req, res) => {
 
     delete global.opaqueLogins[email];
 
+    await recordAudit({
+      accountRef: user.accountRef,
+      eventType: 'LOGIN_SUCCESS',
+      initiator: 'USER',
+      severity: 'INFO'
+    });
+
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.JWT_SECRET,
@@ -236,6 +258,13 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
       wrappedKey: wrappedMasterKey,
       iv: masterKeyIV,
       createdAt: new Date().toISOString()
+    });
+
+    await recordAudit({
+      accountRef: user.accountRef,
+      eventType: 'MASTER_KEY_REPAIRED',
+      initiator: 'USER',
+      severity: 'WARNING'
     });
 
     res.json({
