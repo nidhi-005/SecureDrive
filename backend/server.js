@@ -50,8 +50,8 @@ app.use(limiter);
 
 // Public routes — no token needed
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/auth/did', require('./routes/didAuth'));
 app.use('/api/auth/passkey', require('./routes/passkeyAuth'));
+app.use('/api/auth/did', require('./routes/didAuth'));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });

@@ -33,14 +33,13 @@ const userSchema = new mongoose.Schema({
   didMethod: { type: String, enum: ['did:key'], default: undefined },
   authMethod: {
   type: String,
-  enum: ['opaque', 'did', 'hybrid', 'webauthn'],
+  enum: ['did', 'opaque', 'webauthn'],
   default: 'opaque'
 },
 
-// Random WebAuthn user handle. Never use the email as this identifier.
 webauthnUserID: {
   type: String,
-  default: undefined
+  default: null
 },
   // Legacy OPAQUE authentication record remains optional for DID-only accounts.
   opaqueRegistrationRecord: { type: String, required: false },

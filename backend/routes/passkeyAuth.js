@@ -412,19 +412,33 @@ router.post('/login/verify', async (req, res) => {
 
     const token = issueToken(user);
 
-    return res.json({
-      token,
-      email: user.email,
-      encryptionReady: Boolean(
-        user.wrappedMasterKey &&
-        user.masterKeyIV &&
-        user.encryptionSalt
-      ),
-      nextStep: user.wrappedMasterKey
-        ? 'dashboard'
-        : 'encryption-setup'
-    });
+const encryptionReady = Boolean(
+  user.wrappedMasterKey &&
+  user.masterKeyIV &&
+  user.encryptionSalt
+);
 
+return res.json({
+  token,
+  email: user.email,
+  encryptionReady,
+
+  encryptionSalt: encryptionReady
+    ? user.encryptionSalt
+    : null,
+
+  wrappedMasterKey: encryptionReady
+    ? user.wrappedMasterKey
+    : null,
+
+  masterKeyIV: encryptionReady
+    ? user.masterKeyIV
+    : null,
+
+  nextStep: encryptionReady
+    ? 'unlock-encryption'
+    : 'encryption-setup'
+});
   } catch (error) {
     console.error('Passkey login verification error:', error);
 

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SecureDrive — Secure Authentication</title>
+  <title>SecureDrive</title>
   <link rel="stylesheet" href="css/auth.css">
 </head>
 
@@ -14,11 +14,13 @@
 
       <span class="logo">Secure<span>Drive</span></span>
 
-      <h2>Welcome to SecureDrive</h2>
+      <h2 id="screen-title">Welcome to SecureDrive</h2>
 
-      <p class="subtitle">
-        Secure, passwordless access to your files.
+      <p class="subtitle" id="screen-subtitle">
+        Secure, passwordless account access.
       </p>
+
+      <!-- PASSKEY AUTHENTICATION -->
 
       <section id="passkey-section">
 
@@ -32,7 +34,7 @@
           required
         >
 
-        <div id="passkey-message" class="error-msg" role="status"></div>
+        <p id="passkey-message" class="error-msg" role="status"></p>
 
         <button
           type="button"
@@ -50,14 +52,15 @@
 
       </section>
 
+      <!-- FIRST-TIME ENCRYPTION SETUP -->
+
       <section id="encryption-setup" style="display:none">
 
         <h2>Protect your files</h2>
 
         <p class="helper-text">
-          Create a separate encryption password to protect your
-          SecureDrive Master Key. This password is independent
-          of your passkey.
+          Create a separate password to protect your Master Key.
+          This password is not your passkey.
         </p>
 
         <label for="encryption-password">
@@ -67,8 +70,8 @@
         <input
           type="password"
           id="encryption-password"
-          placeholder="Create encryption password"
           autocomplete="new-password"
+          placeholder="At least 8 characters"
         >
 
         <label for="encryption-password-confirm">
@@ -78,11 +81,11 @@
         <input
           type="password"
           id="encryption-password-confirm"
-          placeholder="Confirm encryption password"
           autocomplete="new-password"
+          placeholder="Confirm password"
         >
 
-        <div id="encryption-message" class="error-msg" role="status"></div>
+        <p id="setup-message" class="error-msg" role="status"></p>
 
         <button
           type="button"
@@ -93,10 +96,43 @@
 
       </section>
 
+      <!-- RETURNING USER MASTER KEY UNLOCK -->
+
+      <section id="encryption-unlock" style="display:none">
+
+        <h2>Unlock your files</h2>
+
+        <p class="helper-text">
+          Your passkey has been verified. Enter your separate
+          file encryption password to unlock your Master Key.
+        </p>
+
+        <label for="unlock-password">
+          File encryption password
+        </label>
+
+        <input
+          type="password"
+          id="unlock-password"
+          autocomplete="current-password"
+          placeholder="Enter encryption password"
+        >
+
+        <p id="unlock-message" class="error-msg" role="status"></p>
+
+        <button
+          type="button"
+          class="btn-primary"
+          id="encryption-unlock-btn">
+          Unlock SecureDrive
+        </button>
+
+      </section>
+
       <p class="auth-note">
         Authentication uses WebAuthn passkeys.
         File encryption uses AES-256-GCM.
-        Your passkey private key is managed by your device's authenticator.
+        Your file encryption password is never sent to the server.
       </p>
 
     </div>
