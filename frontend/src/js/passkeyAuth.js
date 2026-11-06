@@ -41,6 +41,22 @@ function clearMessage(id) {
   element.style.display = 'none';
 }
 
+function resetToPasskeyScreen() {
+  authenticatedEmail = null;
+  encryptionMetadata = null;
+  pendingEncryptionSetup = null;
+
+  ['passkey-email', 'encryption-password', 'encryption-password-confirm', 'unlock-password']
+    .forEach(id => {
+      if ($(id)) $(id).value = '';
+    });
+
+  ['passkey-message', 'setup-message', 'unlock-message'].forEach(clearMessage);
+  showSection('passkey-section');
+  $('screen-title').textContent = 'Welcome to SecureDrive';
+  $('screen-subtitle').textContent = 'Secure, passwordless account access.';
+}
+
 function showSection(sectionId) {
   [
     'passkey-section',
@@ -495,6 +511,37 @@ document.addEventListener('DOMContentLoaded', () => {
   );
 
   showSection('passkey-section');
+
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+
+    if (!sessionStorage.getItem('token')) {
+      resetToPasskeyScreen();
+      return;
+    }
+
+    restoreAuthenticatedSession();
+  });
+
+  $('passkey-email').addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    $('passkey-register-btn').click();
+  });
+
+  ['encryption-password', 'encryption-password-confirm'].forEach(id => {
+    $(id).addEventListener('keydown', event => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      $('encryption-setup-btn').click();
+    });
+  });
+
+  $('unlock-password').addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    $('encryption-unlock-btn').click();
+  });
 
   // If the tab was reloaded while the authenticated session is still active,
   // restore only account metadata. The Master Key must be unlocked again.

@@ -4,6 +4,7 @@ let _masterKey = null;
 let _userEmail = null;
 const SESSION_EMAIL_KEY = 'secureDriveUserEmail';
 try { sessionStorage.removeItem('secureDriveMasterKey'); } catch (_) {}
+try { localStorage.removeItem('secureDriveMasterKey'); } catch (_) {}
 
 export async function setMasterKey(key, email) {
   if (!key || key.algorithm?.name !== 'AES-GCM') {
@@ -40,6 +41,7 @@ export async function setMasterKey(key, email) {
 export async function hydrateSession() {
   // Authentication state may survive a reload, but the MK never does.
   if (_masterKey) return true;
+  try { localStorage.removeItem('secureDriveMasterKey'); } catch (_) {}
   try {
     // Remove any raw Master Key left behind by the previous application version.
     sessionStorage.removeItem('secureDriveMasterKey');
@@ -73,6 +75,11 @@ export function clearSession() {
     sessionStorage.removeItem(SESSION_EMAIL_KEY);
     sessionStorage.removeItem('secureDriveMasterKey');
     sessionStorage.removeItem('token');
+  } catch (_) {}
+  try {
+    localStorage.removeItem(SESSION_EMAIL_KEY);
+    localStorage.removeItem('secureDriveMasterKey');
+    localStorage.removeItem('token');
   } catch (_) {}
 }
 

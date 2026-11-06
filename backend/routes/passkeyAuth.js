@@ -92,7 +92,7 @@ router.post('/register/options', passkeyCeremonyLimiter, async (req, res) => {
 
     if (existingUser) {
       return res.status(409).json({
-        error: 'Unable to create an account with these details'
+        error: 'An account with this email already exists. Sign in with your passkey.'
       });
     }
 
@@ -215,7 +215,7 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
 
     if (existingUser) {
       return res.status(409).json({
-        error: 'Unable to create an account with these details'
+        error: 'An account with this email already exists. Sign in with your passkey.'
       });
     }
 
@@ -257,7 +257,7 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
 
     if (error.code === 11000) {
       return res.status(409).json({
-        error: 'This account or passkey is already registered'
+        error: 'An account with this email or passkey already exists.'
       });
     }
 
@@ -284,7 +284,13 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
 
     const user = await User.findOne({ email });
 
-    if (!user || user.deletionPending) {
+    if (!user) {
+      return res.status(404).json({
+        error: 'No account exists for this email. Create an account first.'
+      });
+    }
+
+    if (user.deletionPending) {
       return res.status(401).json({
         error: 'Invalid account or passkey'
       });
@@ -296,7 +302,7 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
 
     if (!passkeys.length) {
       return res.status(401).json({
-        error: 'Invalid account or passkey'
+        error: 'No passkey is registered for this account.'
       });
     }
 
