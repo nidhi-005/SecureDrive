@@ -25,13 +25,13 @@ import { setMasterKey } from './keyStore.js';
 function switchTab(tab) {
   document.getElementById('tab-login').classList.toggle('active', tab === 'login');
   document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
-  document.getElementById('login-form').style.display  = tab === 'login'  ? '' : 'none';
+  document.getElementById('login-form').style.display = tab === 'login' ? '' : 'none';
   document.getElementById('signup-form').style.display = tab === 'signup' ? '' : 'none';
 }
 
 function showError(id, msg) {
   const el = document.getElementById(id);
-  el.textContent   = msg;
+  el.textContent = msg;
   el.style.display = 'block';
 }
 
@@ -54,14 +54,14 @@ function attachEnterHandler(inputId, handler) {
 // ── SIGNUP ──────────────────────────────────────────────────
 async function handleSignup() {
   clearError('signup-error');
-  const email    = document.getElementById('signup-email').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
   const password = document.getElementById('signup-password').value;
 
-  if (!email || !password)  return showError('signup-error', 'Please fill in all fields');
-  if (password.length < 8)  return showError('signup-error', 'Password must be at least 8 characters');
+  if (!email || !password) return showError('signup-error', 'Please fill in all fields');
+  if (password.length < 8) return showError('signup-error', 'Password must be at least 8 characters');
 
   const btn = document.getElementById('signup-btn');
-  btn.disabled    = true;
+  btn.disabled = true;
   btn.textContent = 'Creating account...';
 
   try {
@@ -87,7 +87,7 @@ async function handleSignup() {
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('signup-error', err.message);
-    btn.disabled    = false;
+    btn.disabled = false;
     btn.textContent = 'Create Account';
   }
 }
@@ -95,19 +95,23 @@ async function handleSignup() {
 // ── LOGIN ───────────────────────────────────────────────────
 async function handleLogin() {
   clearError('login-error');
-  const email    = document.getElementById('login-email').value.trim();
+  const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
 
   if (!email || !password) return showError('login-error', 'Please fill in all fields');
 
   const btn = document.getElementById('login-btn');
-  btn.disabled    = true;
+  btn.disabled = true;
   btn.textContent = 'Logging in...';
 
   try {
     await opaque.ready;
     const { clientLoginState, startLoginRequest } = opaque.client.startLogin({ password });
-    const serverResponse = await apiLoginStart(email, startLoginRequest);
+    const serverResponse = await apiLoginStart(
+      email,
+      startLoginRequest,
+      crypto.randomUUID()
+    );
 
     const loginResult = opaque.client.finishLogin({
       password,
@@ -119,12 +123,16 @@ async function handleLogin() {
       throw new Error('Invalid email or password');
     }
 
-    await apiLoginFinish(email, loginResult.finishLoginRequest);
+    await apiLoginFinish(
+      email,
+      loginResult.finishLoginRequest,
+      serverResponse.loginSessionId
+    );
 
     const encryptionSalt = base64ToUint8Array(serverResponse.encryptionSalt);
 
     const derivedKey = await deriveKeyFromPassword(loginResult.exportKey, encryptionSalt);
-    
+
     let mk;
     let recovered = false;
 
@@ -196,7 +204,7 @@ async function handleLogin() {
     window.location.href = 'dashboard.html';
   } catch (err) {
     showError('login-error', err.message || 'Login failed');
-    btn.disabled    = false;
+    btn.disabled = false;
     btn.textContent = 'Login';
   }
 }
@@ -212,7 +220,7 @@ function initAuthScreen() {
   // Tab switching
   const tabLogin = document.getElementById('tab-login');
   const tabSignup = document.getElementById('tab-signup');
-  
+
   if (tabLogin) {
     tabLogin.addEventListener('click', () => switchTab('login'));
   }
@@ -224,7 +232,7 @@ function initAuthScreen() {
   const loginBtn = document.getElementById('login-btn');
   const loginEmail = document.getElementById('login-email');
   const loginPassword = document.getElementById('login-password');
-  
+
   if (loginBtn) {
     loginBtn.addEventListener('click', handleLogin);
   }
@@ -239,7 +247,7 @@ function initAuthScreen() {
   const signupBtn = document.getElementById('signup-btn');
   const signupEmail = document.getElementById('signup-email');
   const signupPassword = document.getElementById('signup-password');
-  
+
   if (signupBtn) {
     signupBtn.addEventListener('click', handleSignup);
   }

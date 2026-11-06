@@ -1,6 +1,6 @@
-
 import {
   apiDeleteAccount,
+  apiGetDeletionStatus,
   apiLogout
 } from '../api.js';
 
@@ -11,83 +11,100 @@ import {
   isSessionActive
 } from './keyStore.js';
 
-import {
-  initFileDashboard
-} from './fileDashboard.js';
+import { initFileDashboard } from './fileDashboard.js';
+import { initAuditDashboard } from './auditDashboard.js';
 
-import {
-  initAuditDashboard
-} from './auditDashboard.js';
-
-// ── Logout ───────────────────────────────────────────────
 function handleLogout() {
   clearSession();
-
   apiLogout();
-
   window.location.href = 'index.html';
 }
 
-// ── Delete Account ───────────────────────────────────────
 async function handleDeleteAccount() {
   const email = getUserEmail() || 'your account';
-
   const confirmed = confirm(
-    `Permanently delete ${email}?\n\n` +
-    'This will delete your account, encrypted files stored in S3, ' +
-    'and file metadata. Immutable recovery records will be retained ' +
-    'according to the recovery storage retention policy. ' +
-    'This action cannot be undone.'
+    `Schedule deletion for ${email}?\n\n` +
+    'Your account and encrypted files will be deleted after the configured grace period. ' +
+    'Log in again before the scheduled time to cancel the deletion.'
   );
 
   if (!confirmed) return;
 
-  const deleteBtn = document.getElementById('delete-account-btn');
-
-  if (deleteBtn) {
-    deleteBtn.disabled = true;
-    deleteBtn.textContent = 'Deleting...';
+  const deleteButton = document.getElementById('delete-account-btn');
+  if (deleteButton) {
+    deleteButton.disabled = true;
+    deleteButton.textContent = 'Scheduling...';
   }
 
   try {
-    await apiDeleteAccount();
+    const result = await apiDeleteAccount();
+    const scheduledDate = new Date(result.scheduledFor);
+    const scheduledTime = Number.isNaN(scheduledDate.getTime())
+      ? 'the scheduled time returned by the server'
+      : scheduledDate.toLocaleString();
 
     clearSession();
-
     apiLogout();
 
     alert(
-      'Your account and active data have been deleted. ' +
-      'Immutable recovery records are retained according to the retention policy.'
+      `Account deletion is scheduled for ${scheduledTime}.\n\n` +
+      'Your account and active data will be deleted at that time. ' +
+      'To cancel, log in again before the scheduled time. ' +
+      'Immutable recovery records are retained according to the recovery storage retention policy.'
     );
 
     window.location.replace('index.html');
+  } catch (error) {
+    console.error('Account deletion scheduling failed:', error);
+    alert(`Could not schedule account deletion: ${error.message}`);
 
-  } catch (err) {
-    console.error('Account deletion failed:', err);
-
-    alert(
-      `Account deletion failed: ${err.message}\n\n` +
-      'Check the server logs before attempting again.'
-    );
-
-    if (deleteBtn) {
-      deleteBtn.disabled = false;
-      deleteBtn.textContent = 'Delete Account';
+    if (deleteButton) {
+      deleteButton.disabled = false;
+      deleteButton.textContent = 'Delete Account';
     }
   }
 }
 
-// ── Initialize Dashboard ─────────────────────────────────
+function showDashboardPage(page) {
+  document.querySelectorAll('.dashboard-page').forEach(section => {
+    const isActive = section.id === `${page}-page`;
+    section.classList.toggle('hidden', !isActive);
+    section.setAttribute('aria-hidden', String(!isActive));
+  });
+
+  document.querySelectorAll('.dashboard-tab').forEach(button => {
+    const isActive = button.dataset.page === page;
+    button.classList.toggle('active', isActive);
+    button.setAttribute('aria-selected', String(isActive));
+    button.tabIndex = isActive ? 0 : -1;
+  });
+}
+
+function initializeDashboardPages(isAdmin) {
+  const tabs = document.getElementById('dashboard-tabs');
+  const fileTab = document.getElementById('files-tab');
+
+  if (!isAdmin) {
+    tabs?.classList.remove('hidden');
+    fileTab?.addEventListener('click', () => showDashboardPage('files'));
+    document.getElementById('audit-tab')
+      ?.addEventListener('click', () => showDashboardPage('audit'));
+    showDashboardPage('files');
+    return;
+  }
+
+  fileTab?.classList.add('hidden');
+  document.getElementById('audit-tab')?.classList.add('hidden');
+  showDashboardPage('audit');
+}
+
 function initDashboard() {
   document.getElementById('logout-btn')
     ?.addEventListener('click', handleLogout);
-
   document.getElementById('delete-account-btn')
     ?.addEventListener('click', handleDeleteAccount);
 }
 
-// ── Application Initialization ───────────────────────────
 async function init() {
   const restored = await hydrateSession();
 
@@ -97,20 +114,25 @@ async function init() {
   }
 
   const emailElement = document.getElementById('user-email');
-
-  if (emailElement) {
-    emailElement.textContent = getUserEmail() || '';
-  }
+  if (emailElement) emailElement.textContent = getUserEmail() || '';
 
   initDashboard();
 
-  await Promise.all([
-    initFileDashboard(),
-    initAuditDashboard()
-  ]);
+  try {
+    const account = await apiGetDeletionStatus();
+    const isAdmin = account.role === 'ADMIN';
+
+    await initAuditDashboard(isAdmin);
+    if (!isAdmin) await initFileDashboard();
+    initializeDashboardPages(isAdmin);
+
+    document.getElementById('dashboard-pages')?.setAttribute('aria-busy', 'false');
+  } catch (error) {
+    console.error('Dashboard initialization failed:', error);
+    alert(`Could not load the dashboard: ${error.message}`);
+  }
 }
 
-// ── Start Application ────────────────────────────────────
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

@@ -85,30 +85,43 @@ async function apiSignupFinish(email, registrationRecord, wrappedMasterKey, mast
 // Sends startLoginRequest to server, gets loginResponse.
 // ─────────────────────────────────────────────────────────────
 
-async function apiLoginStart(email, startLoginRequest) {
+async function apiLoginStart(email, startLoginRequest, loginSessionId) {
   const res = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, startLoginRequest })
+    body: JSON.stringify({
+      email,
+      startLoginRequest,
+      loginSessionId
+    })
   });
+
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
+
   return data;
 }
 
-// ─────────────────────────────────────────────────────────────
-// AUTH — OPAQUE Login (Step 2)
-// Sends finishLoginRequest to complete authentication.
-// ─────────────────────────────────────────────────────────────
-
-async function apiLoginFinish(email, finishLoginRequest) {
+async function apiLoginFinish(
+  email,
+  finishLoginRequest,
+  loginSessionId
+) {
   const res = await fetch(`${BASE_URL}/auth/login-finish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, finishLoginRequest })
+    body: JSON.stringify({
+      email,
+      finishLoginRequest,
+      loginSessionId
+    })
   });
+
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Login verification failed');
+  if (!res.ok) {
+    throw new Error(data.error || 'Login verification failed');
+  }
+
   saveToken(data.token);
   return data;
 }

@@ -290,28 +290,21 @@ router.get('/:eventId/verify', async (req, res) => {
       });
     }
 
-    const event = await AuditEvent.findOne({ eventId }).lean();
-
-    if (!event) {
-      return res.status(404).json({
-        error: 'Audit event not found'
-      });
-    }
-
-    // Users must have a valid accountRef.
-    // Admins can verify events belonging to any account.
     if (req.user.role !== 'ADMIN' && !requireAccountRef(req, res)) {
       return;
     }
 
-    // Users can verify only their own events.
-    // Admins can verify events belonging to any account.
-    if (
-      req.user.role !== 'ADMIN' &&
-      event.accountRef !== req.user.accountRef
-    ) {
-      return res.status(403).json({
-        error: 'You cannot verify another account’s events'
+    const eventQuery = { eventId };
+
+    if (req.user.role !== 'ADMIN') {
+      eventQuery.accountRef = req.user.accountRef;
+    }
+
+    const event = await AuditEvent.findOne(eventQuery).lean();
+
+    if (!event) {
+      return res.status(404).json({
+        error: 'Audit event not found'
       });
     }
 
@@ -328,6 +321,18 @@ router.get('/:eventId/verify', async (req, res) => {
       return res.status(503).json({
         verified: false,
         status: 'BLOCKCHAIN_UNAVAILABLE',
+        eventId,
+        eventType: event.eventType,
+        timestamp: event.timestamp,
+        database: {
+          commitment: event.commitment,
+          status: event.blockchainStatus,
+          transactionHash: event.transactionHash
+        },
+        network: {
+          chainId: process.env.BLOCKCHAIN_CHAIN_ID || null,
+          contractAddress: process.env.BLOCKCHAIN_CONTRACT_ADDRESS || null
+        },
         message: 'Blockchain verification is temporarily unavailable'
       });
     }
@@ -337,7 +342,18 @@ router.get('/:eventId/verify', async (req, res) => {
         verified: false,
         status: 'NOT_ANCHORED',
         eventId,
+        eventType: event.eventType,
+        timestamp: event.timestamp,
         mongoStatus: event.blockchainStatus,
+        database: {
+          commitment: event.commitment,
+          status: event.blockchainStatus,
+          transactionHash: event.transactionHash
+        },
+        network: {
+          chainId: chainRecord?.chainId,
+          contractAddress: chainRecord?.contractAddress
+        },
         message: 'This event has not been found on the blockchain'
       });
     }
@@ -355,7 +371,9 @@ router.get('/:eventId/verify', async (req, res) => {
       blockchain: {
         commitment: chainRecord.commitment,
         anchoredAt: chainRecord.anchoredAt.toString(),
-        signer: chainRecord.signer
+        signer: chainRecord.signer,
+        chainId: chainRecord.chainId,
+        contractAddress: chainRecord.contractAddress
       },
       database: {
         commitment: event.commitment,

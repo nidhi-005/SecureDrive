@@ -29,6 +29,30 @@ nav {
   color: #94a3b8;
 }
 
+#dashboard-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.dashboard-tab:hover,
+.dashboard-tab.active {
+  border-color: #2d6a4f;
+  color: #6ee7b7;
+  background: rgba(45, 106, 79, 0.16);
+}
+
 #logout-btn {
   background: transparent;
   border: 1px solid #374151;
@@ -41,6 +65,20 @@ nav {
 }
 
 #logout-btn:hover { border-color: #6ee7b7; color: #6ee7b7; }
+
+.delete-account-btn {
+  background: #b91c1c;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.delete-account-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
 
 /* CONTAINER */
 .container {
@@ -763,6 +801,35 @@ input:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.verification-details {
+  margin-top: 12px;
+  color: #a5b4c7;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+.verification-details p + p {
+  margin-top: 5px;
+}
+
+.verification-details strong {
+  color: #dbeafe;
+}
+
+.verification-details code {
+  color: #6ee7b7;
+  overflow-wrap: anywhere;
+}
+
+.verification-details a {
+  color: #6ee7b7;
+}
+
+.verification-guidance {
+  margin-top: 12px !important;
+  color: #cbd5e1;
+}
+
 /* =========================================================
    RESPONSIVE DESIGN
 ========================================================= */
@@ -867,6 +934,12 @@ input:focus-visible {
     justify-content: flex-end;
     gap: 8px;
     font-size: 12px;
+  }
+
+  #dashboard-tabs {
+    order: 3;
+    width: 100%;
+    justify-content: center;
   }
 
   #user-email {

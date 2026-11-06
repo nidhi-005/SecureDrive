@@ -251,16 +251,39 @@ async function anchorAuditEvent({ eventId, commitment }) {
 async function getAuditEvent(eventId) {
   validateBytes32(eventId, 'eventId');
 
-  const { contract } = await getBlockchain();
+  const { contract, network } = await getBlockchain();
 
-  const record = await contract.getAuditEvent(eventId);
+  const contractAddress = await contract.getAddress();
 
-  return {
-    commitment: record.commitment,
-    anchoredAt: BigInt(record.anchoredAt.toString()),
-    signer: record.signer,
-    exists: record.exists
-  };
+  try {
+    const record = await contract.getAuditEvent(eventId);
+
+    return {
+      commitment: record.commitment,
+      anchoredAt: BigInt(record.anchoredAt.toString()),
+      signer: record.signer,
+      exists: record.exists,
+      chainId: network.chainId.toString(),
+      contractAddress
+    };
+  } catch (error) {
+    const reason =
+      error.reason ||
+      error.revert?.args?.[0];
+
+    if (reason === 'Audit event not found') {
+      return {
+        commitment: null,
+        anchoredAt: null,
+        signer: null,
+        exists: false,
+        chainId: network.chainId.toString(),
+        contractAddress
+      };
+    }
+
+    throw error;
+  }
 }
 
 module.exports = {

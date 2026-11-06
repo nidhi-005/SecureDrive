@@ -1,20 +1,49 @@
+
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const opaque = require('@serenity-kit/opaque');
+const { randomUUID } = require('crypto');
+
 const User = require('../models/User');
 const recoveryStore = require('../recovery/s3RecoveryStore');
 const auth = require('../middleware/auth');
-const File = require('../models/File');
-const { deleteAllUserFilesFromS3 } = require('../config/s3');
 const { createAuditEvent } = require('../services/auditService');
-const { randomUUID } = require('crypto');
 
 if (!process.env.OPAQUE_SERVER_SETUP) {
-  throw new Error('OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.');
+  throw new Error(
+    'OPAQUE_SERVER_SETUP is required. Generate one with npx @serenity-kit/opaque create-server-setup and store it in your environment.'
+  );
 }
 
 const OPAQUE_SERVER_SETUP = process.env.OPAQUE_SERVER_SETUP;
+const LOGIN_SESSION_TTL_MS = 5 * 60 * 1000;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// In-memory, single-process OPAQUE session storage.
+// Sessions are bound to an email and a unique login attempt.
+if (!global.opaqueLogins) {
+  global.opaqueLogins = new Map();
+}
+
+if (!(global.opaqueLogins instanceof Map)) {
+  global.opaqueLogins = new Map();
+}
+
+function validLoginSessionId(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
+
+function removeExpiredLoginSessions() {
+  const now = Date.now();
+
+  for (const [id, session] of global.opaqueLogins.entries()) {
+    if (now - session.timestamp > LOGIN_SESSION_TTL_MS) {
+      global.opaqueLogins.delete(id);
+    }
+  }
+}
 
 async function recordAudit(data) {
   try {
@@ -24,43 +53,82 @@ async function recordAudit(data) {
   }
 }
 
+// ============================================================
+// SIGNUP — OPAQUE STEP 1
+// ============================================================
+
 router.post('/signup-request', async (req, res) => {
   try {
     const { email, registrationRequest } = req.body;
 
     if (!email || !registrationRequest) {
-      return res.status(400).json({ error: 'Email and registrationRequest are required' });
+      return res.status(400).json({
+        error: 'Email and registrationRequest are required'
+      });
     }
 
     const existing = await User.findOne({ email });
+
     if (existing) {
-      return res.status(400).json({ error: 'Email already registered' });
+      return res.status(400).json({
+        error: 'Email already registered'
+      });
     }
 
-    const { registrationResponse } = opaque.server.createRegistrationResponse({
-      serverSetup: OPAQUE_SERVER_SETUP,
-      userIdentifier: email,
-      registrationRequest
-    });
+    const { registrationResponse } =
+      opaque.server.createRegistrationResponse({
+        serverSetup: OPAQUE_SERVER_SETUP,
+        userIdentifier: email,
+        registrationRequest
+      });
 
-    res.json({ email, registrationResponse });
+    return res.json({
+      email,
+      registrationResponse
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Signup initialization failed' });
+
+    return res.status(500).json({
+      error: 'Signup initialization failed'
+    });
   }
 });
 
-router.post('/signup-finish', async (req, res) => {
-  try {
-    const { email, registrationRecord, wrappedMasterKey, masterKeyIV, encryptionSalt } = req.body;
+// ============================================================
+// SIGNUP — OPAQUE STEP 2
+// ============================================================
 
-    if (!email || !registrationRecord || !wrappedMasterKey || !masterKeyIV) {
-      return res.status(400).json({ error: 'All signup fields are required' });
+router.post('/signup-finish', async (req, res) => {
+  let createdUser = null;
+
+  try {
+    const {
+      email,
+      registrationRecord,
+      wrappedMasterKey,
+      masterKeyIV,
+      encryptionSalt
+    } = req.body;
+
+    if (
+      !email ||
+      !registrationRecord ||
+      !wrappedMasterKey ||
+      !masterKeyIV ||
+      !encryptionSalt
+    ) {
+      return res.status(400).json({
+        error: 'All signup fields are required'
+      });
     }
 
     const existing = await User.findOne({ email });
+
     if (existing) {
-      return res.status(400).json({ error: 'Email already registered' });
+      return res.status(400).json({
+        error: 'Email already registered'
+      });
     }
 
     const user = new User({
@@ -70,16 +138,26 @@ router.post('/signup-finish', async (req, res) => {
       wrappedMasterKey,
       masterKeyIV
     });
-    await user.save();
 
-    await recoveryStore.append({
-      recordType: 'MASTER_KEY',
-      userId: String(user._id),
-      version: 1,
-      wrappedKey: wrappedMasterKey,
-      iv: masterKeyIV,
-      createdAt: new Date().toISOString()
-    });
+    await user.save();
+    createdUser = user;
+
+    // Initial recovery record must exist before signup succeeds.
+    try {
+      await recoveryStore.append({
+        recordType: 'MASTER_KEY',
+        userId: String(user._id),
+        version: 1,
+        wrappedKey: wrappedMasterKey,
+        iv: masterKeyIV,
+        createdAt: new Date().toISOString()
+      });
+    } catch (recoveryError) {
+      // Prevent an account from being left half-initialized.
+      await User.deleteOne({ _id: user._id });
+      createdUser = null;
+      throw recoveryError;
+    }
 
     await recordAudit({
       accountRef: user.accountRef,
@@ -94,50 +172,85 @@ router.post('/signup-finish', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.status(201).json({ token, email: user.email });
+    return res.status(201).json({
+      token,
+      email: user.email
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Signup failed' });
-  }
-});
 
-router.post('/login', async (req, res) => {
-  try {
-    const { email, startLoginRequest } = req.body;
-
-    if (!email || !startLoginRequest) {
-      return res.status(401).json({ error: 'Email and startLoginRequest required' });
+    // Defensive cleanup if an error occurs after user creation.
+    if (createdUser) {
+      try {
+        await User.deleteOne({ _id: createdUser._id });
+      } catch (cleanupError) {
+        console.error('Signup rollback failed:', cleanupError);
+      }
     }
 
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ error: 'User does not exist' });
-    }
-
-    if (user.deletionPending) {
-      return res.status(403).json({
-        error: 'Account deletion is in progress'
+    if (err.code === 11000) {
+      return res.status(409).json({
+        error: 'Email already registered'
       });
     }
 
-    const { loginResponse, serverLoginState } = opaque.server.startLogin({
+    return res.status(500).json({
+      error: 'Signup failed'
+    });
+  }
+});
+
+// ============================================================
+// LOGIN — OPAQUE STEP 1
+// ============================================================
+
+router.post('/login', async (req, res) => {
+  try {
+    const {
+      email,
+      startLoginRequest,
+      loginSessionId
+    } = req.body;
+
+    if (
+      !email ||
+      !startLoginRequest ||
+      !validLoginSessionId(loginSessionId)
+    ) {
+      return res.status(400).json({
+        error: 'Invalid login request'
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({
+        error: 'Invalid email or password'
+      });
+    }
+
+    const {
+      loginResponse,
+      serverLoginState
+    } = opaque.server.startLogin({
       serverSetup: OPAQUE_SERVER_SETUP,
       userIdentifier: email,
       registrationRecord: user.opaqueRegistrationRecord,
       startLoginRequest
     });
 
-    if (!global.opaqueLogins) {
-      global.opaqueLogins = {};
-    }
+    removeExpiredLoginSessions();
 
-    global.opaqueLogins[email] = {
+    global.opaqueLogins.set(loginSessionId, {
+      email,
       serverLoginState,
       timestamp: Date.now()
-    };
+    });
 
-    res.json({
+    return res.json({
       email: user.email,
+      loginSessionId,
       loginResponse,
       encryptionSalt: user.encryptionSalt,
       wrappedMasterKey: user.wrappedMasterKey,
@@ -145,36 +258,61 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(401).json({ error: 'Login failed' });
+
+    return res.status(401).json({
+      error: 'Login failed'
+    });
   }
 });
 
+// ============================================================
+// LOGIN — OPAQUE STEP 2
+// ============================================================
+
 router.post('/login-finish', async (req, res) => {
   try {
-    const { email, finishLoginRequest } = req.body;
+    const {
+      email,
+      finishLoginRequest,
+      loginSessionId
+    } = req.body;
 
-    if (!email || !finishLoginRequest) {
-      return res.status(401).json({ error: 'Missing required fields' });
+    if (
+      !email ||
+      !finishLoginRequest ||
+      !validLoginSessionId(loginSessionId)
+    ) {
+      return res.status(400).json({
+        error: 'Missing or invalid login fields'
+      });
     }
 
-    if (!global.opaqueLogins || !global.opaqueLogins[email]) {
-      return res.status(401).json({ error: 'Login session not found' });
+    const loginSession =
+      global.opaqueLogins.get(loginSessionId);
+
+    if (!loginSession || loginSession.email !== email) {
+      return res.status(401).json({
+        error: 'Login session not found'
+      });
     }
 
-    const loginSession = global.opaqueLogins[email];
-    if (Date.now() - loginSession.timestamp > 5 * 60 * 1000) {
-      delete global.opaqueLogins[email];
-      return res.status(401).json({ error: 'Login session expired' });
+    // Sessions are single-use, even when authentication fails.
+    global.opaqueLogins.delete(loginSessionId);
+
+    if (
+      Date.now() - loginSession.timestamp >
+      LOGIN_SESSION_TTL_MS
+    ) {
+      return res.status(401).json({
+        error: 'Login session expired'
+      });
     }
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(401).json({ error: 'User does not exist' });
-    }
 
-    if (user.deletionPending) {
-      return res.status(403).json({
-        error: 'Account deletion is in progress'
+    if (!user) {
+      return res.status(401).json({
+        error: 'Invalid email or password'
       });
     }
 
@@ -183,7 +321,44 @@ router.post('/login-finish', async (req, res) => {
       serverLoginState: loginSession.serverLoginState
     });
 
-    delete global.opaqueLogins[email];
+    // Cancel deletion if the account is still within its grace period.
+    if (user.deletionPending) {
+      const restoredUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          deletionPending: true,
+          deletionStatus: 'PENDING',
+          deletionScheduledFor: { $gt: new Date() }
+        },
+        {
+          $set: {
+            deletionPending: false,
+            deletionStatus: 'NONE',
+            deletionRequestedAt: null,
+            deletionScheduledFor: null,
+            deletionRequestEventId: null,
+            deletionLeaseId: null,
+            deletionLeaseUntil: null,
+            deletionAttempts: 0
+          }
+        },
+        { new: true }
+      );
+
+      if (!restoredUser) {
+        return res.status(403).json({
+          error: 'The deletion grace period has expired'
+        });
+      }
+
+      // Record cancellation only after the database confirms it.
+      await recordAudit({
+        accountRef: user.accountRef,
+        eventType: 'ACCOUNT_DELETION_CANCELLED',
+        initiator: 'USER',
+        severity: 'INFO'
+      });
+    }
 
     await recordAudit({
       accountRef: user.accountRef,
@@ -198,12 +373,23 @@ router.post('/login-finish', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.json({ token, email: user.email, sessionKey });
+    return res.json({
+      token,
+      email: user.email,
+      sessionKey
+    });
   } catch (err) {
     console.error(err);
-    res.status(401).json({ error: 'Login verification failed' });
+
+    return res.status(401).json({
+      error: 'Login verification failed'
+    });
   }
 });
+
+// ============================================================
+// RECOVERY — MASTER KEY HISTORY
+// ============================================================
 
 router.get('/recovery/master-key', auth, async (req, res) => {
   try {
@@ -211,16 +397,19 @@ router.get('/recovery/master-key', auth, async (req, res) => {
       req.user.userId
     );
 
-    res.json({
-      records
-    });
+    return res.json({ records });
   } catch (err) {
     console.error('Master Key recovery lookup failed:', err);
-    res.status(500).json({
+
+    return res.status(500).json({
       error: 'Could not fetch Master Key recovery data'
     });
   }
 });
+
+// ============================================================
+// RECOVERY — REPAIR MASTER KEY
+// ============================================================
 
 router.post('/recovery/master-key/repair', auth, async (req, res) => {
   try {
@@ -231,8 +420,6 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
         error: 'Missing Master Key recovery data'
       });
     }
-
-    const User = require('../models/User');
 
     const user = await User.findById(req.user.userId);
 
@@ -245,12 +432,7 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
     const newVersion =
       (user.wrappedMasterKeyVersion || 1) + 1;
 
-    user.wrappedMasterKey = wrappedMasterKey;
-    user.masterKeyIV = masterKeyIV;
-    user.wrappedMasterKeyVersion = newVersion;
-
-    await user.save();
-
+    // Append recovery history before changing the active MongoDB value.
     await recoveryStore.append({
       recordType: 'MASTER_KEY',
       userId: String(user._id),
@@ -260,6 +442,12 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
       createdAt: new Date().toISOString()
     });
 
+    user.wrappedMasterKey = wrappedMasterKey;
+    user.masterKeyIV = masterKeyIV;
+    user.wrappedMasterKeyVersion = newVersion;
+
+    await user.save();
+
     await recordAudit({
       accountRef: user.accountRef,
       eventType: 'MASTER_KEY_REPAIRED',
@@ -267,47 +455,63 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
       severity: 'WARNING'
     });
 
-    res.json({
+    return res.json({
       message: 'Master Key repaired',
       version: newVersion
     });
   } catch (err) {
     console.error('Master Key repair failed:', err);
 
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Could not repair Master Key'
     });
   }
 });
 
-// Check whether account deletion is pending.
+// ============================================================
+// ACCOUNT — DELETION STATUS
+// ============================================================
+
 router.get('/account/deletion-status', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId)
-      .select('deletionPending deletionRequestedAt deletionScheduledFor');
+      .select(
+        'deletionPending deletionRequestedAt deletionScheduledFor role'
+      );
 
     if (!user) {
-      return res.status(404).json({ error: 'Account not found' });
+      return res.status(404).json({
+        error: 'Account not found'
+      });
     }
 
     return res.json({
       deletionPending: user.deletionPending,
       requestedAt: user.deletionRequestedAt,
-      scheduledFor: user.deletionScheduledFor
+      scheduledFor: user.deletionScheduledFor,
+      role: user.role
     });
   } catch (err) {
     console.error('Deletion status lookup failed:', err.message);
-    return res.status(500).json({ error: 'Could not retrieve deletion status' });
+
+    return res.status(500).json({
+      error: 'Could not retrieve deletion status'
+    });
   }
 });
 
-// Request account deletion. This only schedules deletion.
+// ============================================================
+// ACCOUNT — REQUEST DELETION
+// ============================================================
+
 router.delete('/account', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
 
     if (!user) {
-      return res.status(404).json({ error: 'Account not found' });
+      return res.status(404).json({
+        error: 'Account not found'
+      });
     }
 
     if (user.deletionPending) {
@@ -317,29 +521,52 @@ router.delete('/account', auth, async (req, res) => {
       });
     }
 
-    // Backfill pseudonymous reference for existing accounts.
     if (!user.accountRef) {
       user.accountRef = randomUUID();
     }
 
-    const graceDays = Number(
-      process.env.ACCOUNT_DELETION_GRACE_DAYS || 7
-    );
+    const requestedAt = new Date();
+    const graceSecondsSetting =
+      process.env.ACCOUNT_DELETION_GRACE_SECONDS;
+    const graceDays =
+      Number(process.env.ACCOUNT_DELETION_GRACE_DAYS || 7);
 
-    if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > 30) {
-      return res.status(500).json({
-        error: 'Invalid deletion grace-period configuration'
-      });
+    let gracePeriod;
+
+    if (graceSecondsSetting) {
+      const graceSeconds = Number(graceSecondsSetting);
+
+      if (
+        !Number.isInteger(graceSeconds) ||
+        graceSeconds < 1 ||
+        graceSeconds > 30 * 24 * 60 * 60
+      ) {
+        return res.status(500).json({
+          error: 'Invalid deletion grace-period configuration'
+        });
+      }
+
+      gracePeriod = { gracePeriodSeconds: graceSeconds };
+    } else {
+      if (
+        !Number.isInteger(graceDays) ||
+        graceDays < 1 ||
+        graceDays > 30
+      ) {
+        return res.status(500).json({
+          error: 'Invalid deletion grace-period configuration'
+        });
+      }
+
+      gracePeriod = { gracePeriodDays: graceDays };
     }
 
-    const requestedAt = new Date();
-    // const scheduledFor = new Date(
-    //   requestedAt.getTime() + graceDays * 24 * 60 * 60 * 1000
-    // );
+    const graceMilliseconds = gracePeriod.gracePeriodSeconds
+      ? gracePeriod.gracePeriodSeconds * 1000
+      : gracePeriod.gracePeriodDays * 24 * 60 * 60 * 1000;
 
-    const TESTING_GRACE_SECONDS = 30;
     const scheduledFor = new Date(
-      requestedAt.getTime() + TESTING_GRACE_SECONDS * 1000
+      requestedAt.getTime() + graceMilliseconds
     );
 
     user.deletionPending = true;
@@ -362,14 +589,11 @@ router.delete('/account', auth, async (req, res) => {
 
       user.deletionRequestEventId = event.eventId;
       await user.save();
-
     } catch (auditError) {
-      // If audit persistence fails, revert the pending state.
       user.deletionPending = false;
       user.deletionRequestedAt = null;
       user.deletionScheduledFor = null;
       user.deletionRequestEventId = null;
-
       user.deletionStatus = 'NONE';
       user.deletionLeaseId = null;
       user.deletionLeaseUntil = null;
@@ -384,9 +608,8 @@ router.delete('/account', auth, async (req, res) => {
       deletionPending: true,
       requestedAt,
       scheduledFor,
-      gracePeriodDays: graceDays
+      ...gracePeriod
     });
-
   } catch (err) {
     console.error('Account deletion request failed:', err.message);
 
@@ -396,10 +619,10 @@ router.delete('/account', auth, async (req, res) => {
   }
 });
 
+// ============================================================
+// ACCOUNT — CANCEL DELETION
+// ============================================================
 
-// Cancel a pending account deletion.
-
-// Cancel a pending account deletion.
 router.post('/account/deletion-cancel', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -425,15 +648,6 @@ router.post('/account/deletion-cancel', auth, async (req, res) => {
       });
     }
 
-    // Persist cancellation evidence before changing account state.
-    await createAuditEvent({
-      accountRef: user.accountRef,
-      eventType: 'ACCOUNT_DELETION_CANCELLED',
-      initiator: 'USER',
-      severity: 'INFO'
-    });
-
-    // Atomically cancel deletion only if it is still pending.
     const updatedUser = await User.findOneAndUpdate(
       {
         _id: req.user.userId,
@@ -462,11 +676,18 @@ router.post('/account/deletion-cancel', auth, async (req, res) => {
       });
     }
 
+    // Audit only after cancellation has actually succeeded.
+    await recordAudit({
+      accountRef: updatedUser.accountRef,
+      eventType: 'ACCOUNT_DELETION_CANCELLED',
+      initiator: 'USER',
+      severity: 'INFO'
+    });
+
     return res.json({
       message: 'Account deletion cancelled',
       deletionPending: false
     });
-
   } catch (err) {
     console.error(
       'Account deletion cancellation failed:',

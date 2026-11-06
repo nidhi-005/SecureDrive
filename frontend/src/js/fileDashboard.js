@@ -7,7 +7,7 @@ import {
   apiRepairFileKey,
   apiUpload,
   base64ToUint8Array
-} from '../../../misc/SecureDrive_patch/frontend/src/api.js';
+} from '../api.js';
 
 import {
   encryptFile,

@@ -14,14 +14,14 @@ const BATCH_SIZE = 5;
 let timer = null;
 let isRunning = false;
 
-// function calculateRetryDelay(attempts) {
-//   const delay = 30000 * Math.pow(2, Math.max(0, attempts - 1));
-//   return Math.min(delay, MAX_RETRY_DELAY_MS);
-// }
-
 function calculateRetryDelay(attempts) {
-  return 10000; // 10 seconds
+  const delay = 30000 * Math.pow(2, Math.max(0, attempts - 1));
+  return Math.min(delay, MAX_RETRY_DELAY_MS);
 }
+
+// function calculateRetryDelay(attempts) {
+//   return 10000; // 10 seconds
+// }
 
 function commitmentsMatch(first, second) {
   return (
@@ -243,19 +243,29 @@ async function claimNextEvent() {
   const now = new Date();
   const leaseId = crypto.randomUUID();
 
-
-  return AuditEvent.findOneAndUpdate(
+  const event = await AuditEvent.findOneAndUpdate(
     {
-      blockchainStatus: { $in: ['PENDING', 'FAILED'] },
       $and: [
+        {
+          $or: [
+            {
+              blockchainStatus: 'PENDING',
+              $or: [
+                { nextRetryAt: null },
+                { nextRetryAt: { $lte: now } }
+              ]
+            },
+            {
+              blockchainStatus: 'FAILED',
+              nextRetryAt: { $lte: now }
+            }
+          ]
+        },
         {
           $or: [
             { anchorLeaseUntil: null },
             { anchorLeaseUntil: { $lte: now } }
           ]
-        },
-        {
-          nextRetryAt: { $lte: now }
         }
       ]
     },
@@ -274,7 +284,9 @@ async function claimNextEvent() {
       new: true,
       sort: { createdAt: 1 }
     }
-  ).then(event => ({ event, leaseId }));
+  );
+
+  return { event, leaseId };
 }
 
 async function pollAuditEvents() {

@@ -10,7 +10,7 @@ async function main() {
   // For Sepolia, provide INITIAL_SIGNER_ADDRESS.
   const initialSignerAddress =
     process.env.INITIAL_SIGNER_ADDRESS ||
-    signers[1].address;
+    deployer.address;
 
   console.log("Deploying SecureDriveIntegrity...");
   console.log("Contract owner:", deployer.address);
