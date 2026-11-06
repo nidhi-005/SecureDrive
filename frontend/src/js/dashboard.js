@@ -22,7 +22,14 @@ async function init() {
   const restored = await hydrateSession();
 
   if (!restored || !isSessionActive()) {
-    window.location.href = 'index.html';
+    window.location.replace('index.html');
+    return;
+  }
+
+  // A page reload intentionally discards the in-memory Master Key.
+  // Re-authenticate the session and ask for the separate encryption password.
+  if (!getMasterKey()) {
+    window.location.replace('index.html?restore=1');
     return;
   }
 
@@ -40,10 +47,11 @@ function showToast(msg, type = 'success') {
 }
 
 // ── Logout ─────────────────────────────────────────────────
-function handleLogout() {
-  clearSession(); // clears key from module memory
-  apiLogout();    // clears JWT from sessionStorage, redirects to login
-  window.location.href = 'index.html';
+async function handleLogout() {
+  try { await apiLogout(); }
+  catch (error) { console.warn('Server logout could not be confirmed:', error); }
+  clearSession();
+  window.location.replace('index.html');
 }
 
 // ── Delete Account ─────────────────────────────────────────────────
@@ -72,7 +80,6 @@ async function handleDeleteAccount() {
 
     // Clear the master key, saved session key, email, and JWT.
     clearSession();
-    apiLogout();
 
     alert(
       'Your account and active data have been deleted. ' +
@@ -215,9 +222,7 @@ async function loadFiles() {
     // Attach event listeners to dynamically created buttons
     attachFileListeners();
   } catch (err) {
-    list.innerHTML = `<div style="color:#f87171;font-size:13px;padding:20px 0">
-      Failed to load files: ${err.message}
-    </div>`;
+    list.textContent = `Failed to load files: ${err.message}`;
   }
 }
 

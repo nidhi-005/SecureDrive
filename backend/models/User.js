@@ -53,6 +53,9 @@ webauthnUserID: {
 
   wrappedMasterKeyVersion: { type: Number, default: 1 },
 
+  // Incrementing this invalidates all previously issued JWT sessions.
+  sessionVersion: { type: Number, default: 0 },
+
   deletionPending: { type: Boolean, default: false, index: true },
 
   createdAt: { type: Date, default: Date.now }

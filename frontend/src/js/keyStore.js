@@ -1,99 +1,82 @@
-// ============================================================
-// KEY STORE — holds the Master Key in memory and restores it
-// from sessionStorage when the page is reloaded.
-// ============================================================
-
+// Master Key is intentionally memory-only. It is never serialized to
+// localStorage, sessionStorage, cookies, or IndexedDB.
 let _masterKey = null;
 let _userEmail = null;
 const SESSION_EMAIL_KEY = 'secureDriveUserEmail';
-const SESSION_MASTER_KEY = 'secureDriveMasterKey';
-
-function bytesToBase64(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
-
-function base64ToBytes(b64) {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-}
+try { sessionStorage.removeItem('secureDriveMasterKey'); } catch (_) {}
 
 export async function setMasterKey(key, email) {
-  _masterKey = key;
-  _userEmail = email;
+  if (!key || key.algorithm?.name !== 'AES-GCM') {
+    throw new TypeError('A valid AES-GCM CryptoKey is required');
+  }
 
+  // Convert the setup/unwrapped key into a non-extractable working key.
+  // It remains usable for CEK wrap/unwrap but cannot be exported by app code.
+  if (key.extractable) {
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+    try {
+      _masterKey = await crypto.subtle.importKey(
+        'raw',
+        raw,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['wrapKey', 'unwrapKey']
+      );
+    } finally {
+      raw.fill(0);
+    }
+  } else {
+    _masterKey = key;
+  }
+
+  _userEmail = email || null;
   try {
-    const exportedKey = await crypto.subtle.exportKey('raw', key);
-    sessionStorage.setItem(SESSION_MASTER_KEY, bytesToBase64(exportedKey));
-    sessionStorage.setItem(SESSION_EMAIL_KEY, email || '');
-  } catch (error) {
-    // Ignore storage issues in restricted environments.
+    if (_userEmail) sessionStorage.setItem(SESSION_EMAIL_KEY, _userEmail);
+  } catch (_) {
+    // Storage is optional; the key remains in memory.
   }
 }
 
 export async function hydrateSession() {
+  // Authentication state may survive a reload, but the MK never does.
   if (_masterKey) return true;
-
   try {
-    const storedKey = sessionStorage.getItem(SESSION_MASTER_KEY);
-    const storedEmail = sessionStorage.getItem(SESSION_EMAIL_KEY);
-
-    if (!storedKey) {
-      _userEmail = storedEmail || _userEmail;
-      return !!sessionStorage.getItem('token');
-    }
-
-    const keyBytes = base64ToBytes(storedKey);
-    _masterKey = await crypto.subtle.importKey(
-      'raw',
-      keyBytes,
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['wrapKey', 'unwrapKey']
-    );
-
-    _userEmail = storedEmail || _userEmail;
-    return true;
-  } catch (error) {
-    clearSession();
+    // Remove any raw Master Key left behind by the previous application version.
+    sessionStorage.removeItem('secureDriveMasterKey');
+    _userEmail = sessionStorage.getItem(SESSION_EMAIL_KEY) || null;
+    return Boolean(sessionStorage.getItem('token'));
+  } catch (_) {
     return false;
   }
 }
 
 export function getMasterKey() {
-  if (!_masterKey) {
-    if (!sessionStorage.getItem('token')) {
-      window.location.href = 'index.html';
-    }
-    return null;
-  }
   return _masterKey;
 }
 
 export function getUserEmail() {
   if (!_userEmail) {
-    try {
-      _userEmail = sessionStorage.getItem(SESSION_EMAIL_KEY) || null;
-    } catch (error) {
-      _userEmail = null;
-    }
+    try { _userEmail = sessionStorage.getItem(SESSION_EMAIL_KEY) || null; }
+    catch (_) { _userEmail = null; }
   }
   return _userEmail;
+}
+
+export function clearMasterKey() {
+  _masterKey = null;
 }
 
 export function clearSession() {
   _masterKey = null;
   _userEmail = null;
-
   try {
     sessionStorage.removeItem(SESSION_EMAIL_KEY);
-    sessionStorage.removeItem(SESSION_MASTER_KEY);
+    sessionStorage.removeItem('secureDriveMasterKey');
     sessionStorage.removeItem('token');
-    sessionStorage.removeItem('secureDriveUserEmail');
-  } catch (error) {
-    // Ignore storage issues.
-  }
+  } catch (_) {}
 }
 
 export function isSessionActive() {
-  if (_masterKey !== null) return true;
-  return !!sessionStorage.getItem('token') || !!sessionStorage.getItem(SESSION_MASTER_KEY);
+  try { return Boolean(sessionStorage.getItem('token')); }
+  catch (_) { return false; }
 }

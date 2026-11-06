@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://localhost:5173 http://localhost:3000 https://securedrive-mmls.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>SecureDrive</title>
   <link rel="stylesheet" href="css/auth.css">
 </head>
@@ -130,9 +131,10 @@
       </section>
 
       <p class="auth-note">
-        Authentication uses WebAuthn passkeys.
-        File encryption uses AES-256-GCM.
-        Your file encryption password is never sent to the server.
+        Authentication uses a local-device WebAuthn passkey.
+        File encryption uses AES-256-GCM with a separate PBKDF2-derived key.
+        Your file-encryption password is never sent to the server.
+        After a page reload, unlock your files again with that password.
       </p>
 
     </div>

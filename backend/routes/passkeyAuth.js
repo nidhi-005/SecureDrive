@@ -5,6 +5,16 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Passkey = require('../models/Passkey');
 const PasskeyChallenge = require('../models/PasskeyChallenge');
+const auth = require('../middleware/auth');
+const rateLimit = require('express-rate-limit');
+
+const passkeyCeremonyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many passkey attempts. Please wait and try again.' }
+});
 
 const router = express.Router();
 
@@ -51,10 +61,11 @@ function issueToken(user) {
   return jwt.sign(
     {
       userId: String(user._id),
-      email: user.email
+      email: user.email,
+      sessionVersion: Number(user.sessionVersion || 0)
     },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '12h', issuer: 'securedrive', audience: 'securedrive-web' }
   );
 }
 
@@ -67,7 +78,7 @@ function challengeExpiry() {
 // POST /api/auth/passkey/register/options
 // ------------------------------------------------------------
 
-router.post('/register/options', async (req, res) => {
+router.post('/register/options', passkeyCeremonyLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
 
@@ -81,7 +92,7 @@ router.post('/register/options', async (req, res) => {
 
     if (existingUser) {
       return res.status(409).json({
-        error: 'An account with this email already exists'
+        error: 'Unable to create an account with these details'
       });
     }
 
@@ -137,7 +148,7 @@ router.post('/register/options', async (req, res) => {
 // POST /api/auth/passkey/register/verify
 // ------------------------------------------------------------
 
-router.post('/register/verify', async (req, res) => {
+router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const response = req.body.response;
@@ -204,7 +215,7 @@ router.post('/register/verify', async (req, res) => {
 
     if (existingUser) {
       return res.status(409).json({
-        error: 'An account with this email already exists'
+        error: 'Unable to create an account with these details'
       });
     }
 
@@ -222,7 +233,7 @@ router.post('/register/verify', async (req, res) => {
         publicKey: Buffer.from(credential.publicKey).toString('base64'),
         webauthnUserID: challengeRecord.webauthnUserID,
         counter: credential.counter,
-        transports: credential.transports || [],
+        transports: credential.transports?.length ? credential.transports : ['internal'],
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp
       });
@@ -261,7 +272,7 @@ router.post('/register/verify', async (req, res) => {
 // POST /api/auth/passkey/login/options
 // ------------------------------------------------------------
 
-router.post('/login/options', async (req, res) => {
+router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
 
@@ -285,21 +296,33 @@ router.post('/login/options', async (req, res) => {
 
     if (!passkeys.length) {
       return res.status(401).json({
-        error: 'No passkey is registered for this account'
+        error: 'Invalid account or passkey'
       });
     }
 
     const { generateAuthenticationOptions } = await getWebAuthn();
     const { rpID } = getWebAuthnConfig();
 
+    // SecureDrive's current policy is local-device passkeys only. Platform
+    // credentials normally advertise the "internal" transport. Do not silently
+    // initiate hybrid/QR authentication for credentials registered elsewhere.
+    const localPasskeys = passkeys.filter(passkey =>
+      Array.isArray(passkey.transports) &&
+      passkey.transports.includes('internal')
+    );
+
+    if (!localPasskeys.length) {
+      return res.status(409).json({
+        error: 'No local-device passkey is registered for this account. Register a passkey on this device first.'
+      });
+    }
+
     const options = await generateAuthenticationOptions({
       rpID,
-
-      allowCredentials: passkeys.map(passkey => ({
+      allowCredentials: localPasskeys.map(passkey => ({
         id: passkey.credentialId,
-        transports: passkey.transports
+        transports: ['internal']
       })),
-
       userVerification: 'required',
       timeout: 60000
     });
@@ -333,7 +356,7 @@ router.post('/login/options', async (req, res) => {
 // POST /api/auth/passkey/login/verify
 // ------------------------------------------------------------
 
-router.post('/login/verify', async (req, res) => {
+router.post('/login/verify', passkeyCeremonyLimiter, async (req, res) => {
   try {
     const email = normalizeEmail(req.body.email);
     const response = req.body.response;
@@ -446,6 +469,56 @@ return res.json({
     return res.status(401).json({
       error: 'Passkey authentication failed'
     });
+  }
+});
+
+
+// ------------------------------------------------------------
+// SESSION: restore authenticated account metadata after reload.
+// The Master Key is never returned by this endpoint.
+// GET /api/auth/passkey/session
+// ------------------------------------------------------------
+router.get('/session', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId)
+      .select('email authMethod encryptionSalt wrappedMasterKey masterKeyIV encryptionReady deletionPending');
+
+    if (!user || user.deletionPending || user.authMethod !== 'webauthn') {
+      return res.status(401).json({ error: 'Session is not valid' });
+    }
+
+    const encryptionReady = Boolean(
+      user.encryptionReady && user.encryptionSalt &&
+      user.wrappedMasterKey && user.masterKeyIV
+    );
+
+    return res.json({
+      email: user.email,
+      encryptionReady,
+      encryptionSalt: encryptionReady ? user.encryptionSalt : null,
+      wrappedMasterKey: encryptionReady ? user.wrappedMasterKey : null,
+      masterKeyIV: encryptionReady ? user.masterKeyIV : null
+    });
+  } catch (error) {
+    console.error('Passkey session lookup failed:', error);
+    return res.status(500).json({ error: 'Could not restore session' });
+  }
+});
+
+// ------------------------------------------------------------
+// LOGOUT: revoke this account's existing JWTs.
+// POST /api/auth/passkey/logout
+// ------------------------------------------------------------
+router.post('/logout', auth, async (req, res) => {
+  try {
+    await User.updateOne(
+      { _id: req.user.userId },
+      { $inc: { sessionVersion: 1 } }
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Passkey logout failed:', error);
+    return res.status(500).json({ error: 'Could not end session' });
   }
 });
 

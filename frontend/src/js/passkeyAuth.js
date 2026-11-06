@@ -16,10 +16,11 @@ import {
 
 import { setMasterKey } from './keyStore.js';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = (import.meta.env.VITE_API_BASE || 'http://localhost:3000/api').replace(/\/$/, '');
 
 let authenticatedEmail = null;
 let encryptionMetadata = null;
+let pendingEncryptionSetup = null;
 
 const $ = id => document.getElementById(id);
 
@@ -97,9 +98,64 @@ async function post(path, body, authenticated = false) {
 
 function saveAuthentication(data) {
   authenticatedEmail = data.email;
-
   sessionStorage.setItem('token', data.token);
   sessionStorage.setItem('secureDriveUserEmail', data.email);
+}
+
+async function restoreAuthenticatedSession() {
+  const token = sessionStorage.getItem('token');
+  if (!token) return false;
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/passkey/session`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Session expired');
+
+    authenticatedEmail = data.email;
+    sessionStorage.setItem('secureDriveUserEmail', data.email);
+
+    if (data.encryptionReady) {
+      encryptionMetadata = {
+        encryptionSalt: data.encryptionSalt,
+        wrappedMasterKey: data.wrappedMasterKey,
+        masterKeyIV: data.masterKeyIV
+      };
+      showSection('encryption-unlock');
+      $('screen-title').textContent = 'Welcome back';
+      $('screen-subtitle').textContent =
+        'Your session is active. Enter your separate file-encryption password to unlock your files.';
+    } else {
+      showSection('encryption-setup');
+      $('screen-title').textContent = 'Protect your files';
+    }
+    return true;
+  } catch (error) {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('secureDriveUserEmail');
+    return false;
+  }
+}
+
+// Keep the unlocked Master Key in this document's memory. A full-page
+// navigation would destroy it, so load the dashboard into the current document.
+// Refreshing dashboard.html intentionally starts a fresh document and requires
+// the separate encryption password again.
+async function openDashboard() {
+  const response = await fetch('./dashboard.html', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Could not open the SecureDrive dashboard.');
+
+  const html = await response.text();
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  parsed.body.querySelectorAll('script').forEach(script => script.remove());
+
+  document.title = parsed.title || 'SecureDrive — Dashboard';
+  document.head.innerHTML = parsed.head.innerHTML;
+  document.body.innerHTML = parsed.body.innerHTML;
+  history.pushState({}, '', 'dashboard.html');
+
+  await import('./dashboard.js');
 }
 
 // --------------------------------------------------
@@ -155,10 +211,10 @@ async function registerWithPasskey() {
 
   } catch (error) {
     console.error(error);
-    showMessage(
-      'passkey-message',
-      error.message || 'Passkey registration failed.'
-    );
+    const message = error.name === 'NotAllowedError'
+      ? 'Local passkey registration was cancelled or is not available on this device. Check that your device supports Windows Hello, Touch ID, or another platform authenticator.'
+      : (error.message || 'Passkey registration failed.');
+    showMessage('passkey-message', message);
   } finally {
     setBusy(
       button,
@@ -241,10 +297,10 @@ async function loginWithPasskey() {
 
   } catch (error) {
     console.error(error);
-    showMessage(
-      'passkey-message',
-      error.message || 'Passkey login failed.'
-    );
+    const message = error.name === 'NotAllowedError'
+      ? 'No local passkey was selected, or the request was cancelled. Use a browser and device where you registered a local passkey.'
+      : (error.message || 'Passkey login failed.');
+    showMessage('passkey-message', message);
   } finally {
     setBusy(
       button,
@@ -289,36 +345,48 @@ async function setupEncryption() {
       'Set up file encryption'
     );
 
-    const salt = generateSalt();
+    if (!pendingEncryptionSetup) {
+      const salt = generateSalt();
+      const derivedKey = await deriveKeyFromPassword(password, salt);
+      const masterKey = await generateMasterKey();
+      const wrapped = await wrapMasterKey(masterKey, derivedKey);
 
-    const derivedKey = await deriveKeyFromPassword(
-      password,
-      salt
-    );
-
-    const masterKey = await generateMasterKey();
-
-    const wrapped = await wrapMasterKey(
-      masterKey,
-      derivedKey
-    );
+      const passwordDigest = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(password)
+      );
+      pendingEncryptionSetup = {
+        masterKey,
+        passwordDigest: bytesToBase64(passwordDigest),
+        payload: {
+          encryptionSalt: bytesToBase64(salt),
+          wrappedMasterKey: wrapped.wrappedMasterKey,
+          masterKeyIV: wrapped.masterKeyIV
+        }
+      };
+    } else {
+      const retryDigest = bytesToBase64(await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(password)
+      ));
+      if (pendingEncryptionSetup.passwordDigest !== retryDigest) {
+        throw new Error('A previous setup attempt is pending. Re-enter the same encryption password to safely retry.');
+      }
+    }
 
     await post(
       '/auth/did/encryption-setup',
-      {
-        encryptionSalt: bytesToBase64(salt),
-        wrappedMasterKey: wrapped.wrappedMasterKey,
-        masterKeyIV: wrapped.masterKeyIV
-      },
+      pendingEncryptionSetup.payload,
       true
     );
 
-    await setMasterKey(masterKey, authenticatedEmail);
+    await setMasterKey(pendingEncryptionSetup.masterKey, authenticatedEmail);
+    pendingEncryptionSetup = null;
 
     $('encryption-password').value = '';
     $('encryption-password-confirm').value = '';
 
-    window.location.href = 'dashboard.html';
+    await openDashboard();
 
   } catch (error) {
     console.error(error);
@@ -382,7 +450,7 @@ async function unlockEncryption() {
 
     $('unlock-password').value = '';
 
-    window.location.href = 'dashboard.html';
+    await openDashboard();
 
   } catch (error) {
     console.error(error);
@@ -427,4 +495,8 @@ document.addEventListener('DOMContentLoaded', () => {
   );
 
   showSection('passkey-section');
+
+  // If the tab was reloaded while the authenticated session is still active,
+  // restore only account metadata. The Master Key must be unlocked again.
+  restoreAuthenticatedSession();
 });

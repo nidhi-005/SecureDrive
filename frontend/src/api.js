@@ -6,7 +6,7 @@
 // ============================================================
 
 // const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
-const BASE_URL = 'http://localhost:3000/api'
+const BASE_URL = (import.meta.env.VITE_API_BASE || 'http://localhost:3000/api').replace(/\/$/, '')
 
 // ─────────────────────────────────────────────────────────────
 // Helper: get stored JWT token from sessionStorage
@@ -177,8 +177,24 @@ async function apiDidEncryptionSetup(encryptionSalt, wrappedMasterKey, masterKey
 // AUTH — Logout
 // ─────────────────────────────────────────────────────────────
 
-function apiLogout() {
-  clearToken();
+async function apiLogout() {
+  try {
+    await fetch(`${BASE_URL}/auth/passkey/logout`, {
+      method: 'POST',
+      headers: authHeader()
+    });
+  } finally {
+    clearToken();
+  }
+}
+
+async function apiGetPasskeySession() {
+  const res = await fetch(`${BASE_URL}/auth/passkey/session`, {
+    headers: authHeader()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Session expired');
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -397,6 +413,7 @@ export {
   apiDidLogin, apiDidRegister, apiDownload,
   apiGetFileKeyRecovery,
   apiGetMasterKeyRecovery,
+  apiGetPasskeySession,
   apiGetMeta,
   apiListFiles,
   apiLoginFinish,
