@@ -878,7 +878,20 @@ input:focus-visible {
   color: #cbd5e1;
 }
 
-.audit-insights-grid,
+.audit-insights-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 18px;
+  margin: 20px 0;
+  overflow-x: auto;
+}
+.audit-insight-card {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* .audit-insights-grid, */
 .audit-charts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

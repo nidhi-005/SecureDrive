@@ -355,7 +355,6 @@ function renderVerificationDetails(result) {
       <p><strong>Read from contract:</strong> <code>getAuditEvent(bytes32 eventId)</code></p>
       <p><strong>Event ID:</strong> ${escapeHtml(result.eventId)}</p>
       <p><strong>Audit record commitment:</strong> ${escapeHtml(database.commitment || 'Unavailable')}</p>
-      <p><strong>On-chain commitment:</strong> ${escapeHtml(blockchain.commitment || 'Not found')}</p>
       <p><strong>Transaction hash:</strong> ${transactionHash
       ? `${escapeHtml(transactionHash)}${explorerUrl
         ? ` · <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer">Open in block explorer</a>`

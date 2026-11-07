@@ -11,13 +11,21 @@ import {
   isSessionActive
 } from './keyStore.js';
 
-import { initFileDashboard } from './fileDashboard.js';
 import { initAuditDashboard } from './auditDashboard.js';
+import { initFileDashboard } from './fileDashboard.js';
 
 function handleLogout() {
   clearSession();
   apiLogout();
   window.location.href = 'index.html';
+}
+
+function updateAdminVisibility(isAdmin) {
+  const adminElements = document.querySelectorAll('.admin-only');
+
+  adminElements.forEach(element => {
+    element.classList.toggle('hidden', !isAdmin);
+  });
 }
 
 async function handleDeleteAccount() {
@@ -121,6 +129,7 @@ async function init() {
   try {
     const account = await apiGetDeletionStatus();
     const isAdmin = account.role === 'ADMIN';
+    updateAdminVisibility(isAdmin);
 
     await initAuditDashboard(isAdmin);
     if (!isAdmin) await initFileDashboard();

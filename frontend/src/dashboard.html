@@ -99,11 +99,11 @@
           </div>
 
           <div class="audit-insights-grid">
-            <div class="audit-insight-card">
+            <div class="audit-insight-card hidden">
               <span>Failed logins</span>
               <strong id="auditFailedLogins">0</strong>
             </div>
-            <div class="audit-insight-card">
+            <div class="audit-insight-card hidden">
               <span>Integrity mismatches</span>
               <strong id="auditIntegrityMismatches">0</strong>
             </div>
@@ -116,7 +116,7 @@
               <strong id="auditAnchorSuccessRate">0%</strong>
             </div>
 
-            <div class="audit-insight-card">
+            <div class="audit-insight-card hidden">
               <span>Failed login rate</span>
               <strong id="auditFailedLoginRate">0%</strong>
             </div>
@@ -173,14 +173,14 @@
               </div>
             </section>
 
-            <section class="audit-chart-card">
+            <section class="audit-chart-card admin-only hidden" id="mostActiveAccountsCard">
               <h3>Most active accounts</h3>
               <div class="audit-chart-container">
                 <canvas id="auditAccountChart"></canvas>
               </div>
             </section>
 
-            <section class="audit-chart-card">
+            <section class="audit-chart-card admin-only hidden" id="incidentAccountsCard">
               <h3>Accounts with security incidents</h3>
               <div class="audit-chart-container">
                 <canvas id="auditIncidentAccountChart"></canvas>
