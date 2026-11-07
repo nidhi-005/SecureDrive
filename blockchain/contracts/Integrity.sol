@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
@@ -30,10 +29,7 @@ contract SecureDriveIntegrity {
     }
 
     modifier onlySigner() {
-        require(
-            authorizedSigners[msg.sender],
-            "Not authorized signer"
-        );
+        require(authorizedSigners[msg.sender], "Not authorized signer");
         _;
     }
 
@@ -71,11 +67,29 @@ contract SecureDriveIntegrity {
         bool exists;
     }
 
+    struct AuditBatchRecord {
+        bytes32 merkleRoot;
+        uint64 anchoredAt;
+        address signer;
+        uint32 leafCount;
+        bool exists;
+    }
+
+    mapping(bytes32 => AuditBatchRecord) private auditBatches;
+
     mapping(bytes32 => AuditRecord) private auditHistory;
 
     // --------------------------------------------------
     // EVENTS
     // --------------------------------------------------
+
+    event AuditBatchAnchored(
+        bytes32 indexed batchId,
+        bytes32 merkleRoot,
+        uint32 leafCount,
+        address signer,
+        uint256 timestamp
+    );
 
     event IntegrityAnchored(
         bytes32 indexed fileId,
@@ -93,20 +107,14 @@ contract SecureDriveIntegrity {
         uint256 timestamp
     );
 
-    event SignerUpdated(
-        address indexed signer,
-        bool authorized
-    );
+    event SignerUpdated(address indexed signer, bool authorized);
 
     // --------------------------------------------------
     // CONSTRUCTOR
     // --------------------------------------------------
 
     constructor(address initialSigner) {
-        require(
-            initialSigner != address(0),
-            "Invalid initial signer"
-        );
+        require(initialSigner != address(0), "Invalid initial signer");
 
         owner = msg.sender;
         authorizedSigners[initialSigner] = true;
@@ -122,10 +130,7 @@ contract SecureDriveIntegrity {
         address signer,
         bool authorized
     ) external onlyOwner {
-        require(
-            signer != address(0),
-            "Invalid signer address"
-        );
+        require(signer != address(0), "Invalid signer address");
 
         authorizedSigners[signer] = authorized;
 
@@ -144,15 +149,9 @@ contract SecureDriveIntegrity {
     ) external onlySigner {
         require(fileId != bytes32(0), "Invalid file ID");
 
-        require(
-            commitment != bytes32(0),
-            "Invalid commitment"
-        );
+        require(commitment != bytes32(0), "Invalid commitment");
 
-        require(
-            recordType == 1 || recordType == 2,
-            "Invalid record type"
-        );
+        require(recordType == 1 || recordType == 2, "Invalid record type");
 
         uint64 currentVersion = latestVersion[fileId];
 
@@ -164,15 +163,12 @@ contract SecureDriveIntegrity {
         // A deleted file cannot be silently reactivated.
         require(
             currentVersion == 0 ||
-            integrityHistory[fileId][currentVersion].recordType != 2,
+                integrityHistory[fileId][currentVersion].recordType != 2,
             "File already deleted"
         );
 
         // Strict sequential versioning.
-        require(
-            version == currentVersion + 1,
-            "Invalid version sequence"
-        );
+        require(version == currentVersion + 1, "Invalid version sequence");
 
         IntegrityRecord memory record = IntegrityRecord({
             commitment: commitment,
@@ -236,15 +232,9 @@ contract SecureDriveIntegrity {
     ) external onlySigner {
         require(eventId != bytes32(0), "Invalid event ID");
 
-        require(
-            commitment != bytes32(0),
-            "Invalid commitment"
-        );
+        require(commitment != bytes32(0), "Invalid commitment");
 
-        require(
-            !auditHistory[eventId].exists,
-            "Audit event already anchored"
-        );
+        require(!auditHistory[eventId].exists, "Audit event already anchored");
 
         auditHistory[eventId] = AuditRecord({
             commitment: commitment,
@@ -268,11 +258,86 @@ contract SecureDriveIntegrity {
     function getAuditEvent(
         bytes32 eventId
     ) external view returns (AuditRecord memory) {
-        require(
-            auditHistory[eventId].exists,
-            "Audit event not found"
-        );
+        require(auditHistory[eventId].exists, "Audit event not found");
 
         return auditHistory[eventId];
+    }
+
+    // --------------------------------------------------
+    // MERKLE AUDIT BATCH ANCHORING
+    // --------------------------------------------------
+
+    function anchorAuditBatch(
+        bytes32 batchId,
+        bytes32 merkleRoot,
+        uint32 leafCount
+    ) external onlySigner {
+        require(batchId != bytes32(0), "Invalid batch ID");
+        require(merkleRoot != bytes32(0), "Invalid Merkle root");
+        require(leafCount > 0, "Empty audit batch");
+        require(!auditBatches[batchId].exists, "Batch already anchored");
+
+        auditBatches[batchId] = AuditBatchRecord({
+            merkleRoot: merkleRoot,
+            anchoredAt: uint64(block.timestamp),
+            signer: msg.sender,
+            leafCount: leafCount,
+            exists: true
+        });
+
+        emit AuditBatchAnchored(
+            batchId,
+            merkleRoot,
+            leafCount,
+            msg.sender,
+            block.timestamp
+        );
+    }
+
+    function getAuditBatch(
+        bytes32 batchId
+    ) external view returns (AuditBatchRecord memory) {
+        require(auditBatches[batchId].exists, "Audit batch not found");
+        return auditBatches[batchId];
+    }
+
+    // --------------------------------------------------
+    // MERKLE PROOF VERIFICATION
+    // --------------------------------------------------
+
+    function verifyAuditProof(
+        bytes32 batchId,
+        bytes32 commitment,
+        uint256 leafIndex,
+        bytes32[] calldata proof
+    ) external view returns (bool) {
+        AuditBatchRecord memory batch = auditBatches[batchId];
+
+        require(batch.exists, "Audit batch not found");
+        require(leafIndex < batch.leafCount, "Invalid leaf index");
+
+        // Must match merkleService.js hashLeaf():
+        // SHA256(0x00 || commitment)
+        bytes32 computed = sha256(abi.encodePacked(bytes1(0x00), commitment));
+
+        uint256 position = leafIndex;
+
+        for (uint256 i = 0; i < proof.length; i++) {
+            // Must match merkleService.js hashPair():
+            // SHA256(0x01 || left || right)
+            if (position % 2 == 0) {
+                computed = sha256(
+                    abi.encodePacked(bytes1(0x01), computed, proof[i])
+                );
+            } else {
+                computed = sha256(
+                    abi.encodePacked(bytes1(0x01), proof[i], computed)
+                );
+            }
+
+            position /= 2;
+        }
+
+        return computed == batch.merkleRoot;
     }
 }

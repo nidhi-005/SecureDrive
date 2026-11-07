@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const auditEventSchema = new mongoose.Schema({
-  // Random 32-byte event identifier, suitable for blockchain bytes32.
+
   eventId: {
     type: String,
     required: true,
@@ -9,7 +9,6 @@ const auditEventSchema = new mongoose.Schema({
     immutable: true
   },
 
-  // Random pseudonymous account reference, not a MongoDB user ID.
   accountRef: {
     type: String,
     required: true,
@@ -26,34 +25,22 @@ const auditEventSchema = new mongoose.Schema({
   eventType: {
     type: String,
     required: true,
-    enum: [
-      // Account lifecycle
-      'ACCOUNT_CREATED',
-      'ACCOUNT_DELETION_REQUESTED',
-      'ACCOUNT_DELETION_CANCELLED',
-      'ACCOUNT_DELETED',
-
-      // Authentication
-      'LOGIN_SUCCESS',
-      'LOGIN_FAILED',
-
-      // File operations
-      'FILE_UPLOADED',
-      'FILE_DELETED',
-      'FILE_CEK_RECOVERED',
-      'FILE_CEK_REPAIRED',
-
-      // Master key operations
-      'MASTER_KEY_RECOVERED',
-      'MASTER_KEY_REPAIRED',
-      'MASTER_KEY_RECOVERY_FAILED',
-
-      // Integrity monitoring
-      'INTEGRITY_VERIFIED',
-      'INTEGRITY_MISMATCH'
-    ]
+    index: true
   },
 
+  category: {
+    type: String,
+    required: true,
+    enum: [
+      'AUTHENTICATION',
+      'FILE_OPERATIONS',
+      'ACCOUNT_LIFECYCLE',
+      'INTEGRITY',
+      'KEY_MANAGEMENT',
+      'SECURITY'
+    ],
+    index: true
+  },
 
   initiator: {
     type: String,
@@ -63,17 +50,30 @@ const auditEventSchema = new mongoose.Schema({
 
   severity: {
     type: String,
-    enum: ['INFO', 'WARNING', 'CRITICAL'],
-    default: 'INFO'
+    enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+    default: 'LOW',
+    index: true
+  },
+
+  outcome: {
+    type: String,
+    enum: ['SUCCESS', 'FAILURE', 'WARNING'],
+    default: 'SUCCESS',
+    index: true
+  },
+
+  details: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   },
 
   timestamp: {
     type: Date,
     required: true,
-    immutable: true
+    immutable: true,
+    index: true
   },
 
-  // SHA-256 commitment of the canonical event fields.
   commitment: {
     type: String,
     required: true,
@@ -82,8 +82,26 @@ const auditEventSchema = new mongoose.Schema({
 
   blockchainStatus: {
     type: String,
-    enum: ['PENDING', 'ANCHORED', 'FAILED'],
-    default: 'PENDING'
+    enum: ['PENDING', 'BATCHED', 'ANCHORED', 'FAILED'],
+    default: 'PENDING',
+    index: true
+  },
+
+  batchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'AuditBatch',
+    default: null,
+    index: true
+  },
+
+  leafIndex: {
+    type: Number,
+    default: null
+  },
+
+  merkleProof: {
+    type: [String],
+    default: []
   },
 
   transactionHash: {
@@ -109,19 +127,20 @@ const auditEventSchema = new mongoose.Schema({
   lastAnchorError: {
     type: String,
     default: null
-  },
-
-  anchorLeaseId: {
-    type: String,
-    default: null
-  },
-
-  anchorLeaseUntil: {
-    type: Date,
-    default: null
   }
 }, {
   timestamps: true
+});
+
+auditEventSchema.index({ accountRef: 1, timestamp: -1 });
+auditEventSchema.index({ category: 1, timestamp: -1 });
+auditEventSchema.index({ severity: 1, timestamp: -1 });
+auditEventSchema.index({ blockchainStatus: 1, nextRetryAt: 1 });
+auditEventSchema.index({
+  blockchainStatus: 1,
+  batchId: 1,
+  nextRetryAt: 1,
+  timestamp: 1
 });
 
 module.exports = mongoose.model('AuditEvent', auditEventSchema);

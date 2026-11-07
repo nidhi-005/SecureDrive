@@ -112,7 +112,10 @@ async function processDeletion(user) {
       eventType: 'ACCOUNT_DELETED',
       initiator: 'SYSTEM',
       severity: 'CRITICAL',
-      relatedEventId: user.deletionRequestEventId
+      relatedEventId: user.deletionRequestEventId,
+      details: {
+        operation: 'account_deletion_completed'
+      }
     });
   }
 
@@ -131,7 +134,13 @@ async function processDeletion(user) {
 
   // Remove any in-memory OPAQUE login state.
   if (global.opaqueLogins && deletedUser.email) {
-    delete global.opaqueLogins[deletedUser.email];
+    if (global.opaqueLogins instanceof Map && deletedUser.email) {
+      for (const [sessionId, session] of global.opaqueLogins.entries()) {
+        if (session.email === deletedUser.email) {
+          global.opaqueLogins.delete(sessionId);
+        }
+      }
+    }
   }
 
   console.log(`Account permanently deleted: ${accountRef}`);

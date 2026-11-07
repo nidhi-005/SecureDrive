@@ -163,7 +163,7 @@ router.post('/signup-finish', async (req, res) => {
       accountRef: user.accountRef,
       eventType: 'ACCOUNT_CREATED',
       initiator: 'USER',
-      severity: 'INFO'
+      severity: 'LOW'
     });
 
     const token = jwt.sign(
@@ -356,7 +356,7 @@ router.post('/login-finish', async (req, res) => {
         accountRef: user.accountRef,
         eventType: 'ACCOUNT_DELETION_CANCELLED',
         initiator: 'USER',
-        severity: 'INFO'
+        severity: 'LOW'
       });
     }
 
@@ -364,7 +364,7 @@ router.post('/login-finish', async (req, res) => {
       accountRef: user.accountRef,
       eventType: 'LOGIN_SUCCESS',
       initiator: 'USER',
-      severity: 'INFO'
+      severity: 'LOW'
     });
 
     const token = jwt.sign(
@@ -379,6 +379,23 @@ router.post('/login-finish', async (req, res) => {
       sessionKey
     });
   } catch (err) {
+    if (email) {
+      const failedUser = await User.findOne({ email }).select('accountRef');
+
+      if (failedUser) {
+        await recordAudit({
+          accountRef: failedUser.accountRef,
+          eventType: 'LOGIN_FAILED',
+          initiator: 'USER',
+          severity: 'MEDIUM',
+          outcome: 'FAILURE',
+          details: {
+            method: 'OPAQUE',
+            reason: 'login_verification_failed'
+          }
+        });
+      }
+    }
     console.error(err);
 
     return res.status(401).json({
@@ -452,7 +469,7 @@ router.post('/recovery/master-key/repair', auth, async (req, res) => {
       accountRef: user.accountRef,
       eventType: 'MASTER_KEY_REPAIRED',
       initiator: 'USER',
-      severity: 'WARNING'
+      severity: 'HIGH'
     });
 
     return res.json({
@@ -584,7 +601,7 @@ router.delete('/account', auth, async (req, res) => {
         accountRef: user.accountRef,
         eventType: 'ACCOUNT_DELETION_REQUESTED',
         initiator: 'USER',
-        severity: 'WARNING'
+        severity: 'MEDIUM'
       });
 
       user.deletionRequestEventId = event.eventId;
@@ -681,7 +698,7 @@ router.post('/account/deletion-cancel', auth, async (req, res) => {
       accountRef: updatedUser.accountRef,
       eventType: 'ACCOUNT_DELETION_CANCELLED',
       initiator: 'USER',
-      severity: 'INFO'
+      severity: 'LOW'
     });
 
     return res.json({

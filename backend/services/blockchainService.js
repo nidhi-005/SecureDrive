@@ -248,6 +248,108 @@ async function anchorAuditEvent({ eventId, commitment }) {
   };
 }
 
+async function anchorAuditBatch({
+  batchId,
+  merkleRoot,
+  leafCount
+}) {
+  validateBytes32(batchId, 'batchId');
+  validateBytes32(merkleRoot, 'merkleRoot');
+
+  if (!Number.isInteger(leafCount) || leafCount < 1) {
+    throw new Error('Invalid batch leaf count');
+  }
+
+  const { contract } = await getBlockchain();
+
+  const tx = await contract.anchorAuditBatch(
+    batchId,
+    merkleRoot,
+    leafCount
+  );
+
+  const receipt = await tx.wait();
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error('Merkle batch anchoring failed');
+  }
+
+  return {
+    transactionHash: tx.hash,
+    blockNumber: receipt.blockNumber,
+    status: 'ANCHORED'
+  };
+}
+
+async function getAuditBatchRoot(batchId) {
+  validateBytes32(batchId, 'batchId');
+
+  const { contract, network } = await getBlockchain();
+  const contractAddress = await contract.getAddress();
+
+  try {
+    const record = await contract.getAuditBatch(batchId);
+
+    return {
+      merkleRoot: record.merkleRoot,
+      anchoredAt: BigInt(record.anchoredAt.toString()),
+      signer: record.signer,
+      leafCount: Number(record.leafCount),
+      exists: record.exists,
+      chainId: network.chainId.toString(),
+      contractAddress
+    };
+  } catch (error) {
+    const reason =
+      error.reason ||
+      error.revert?.args?.[0];
+
+    if (reason === 'Audit batch not found') {
+      return {
+        merkleRoot: null,
+        anchoredAt: null,
+        signer: null,
+        leafCount: 0,
+        exists: false,
+        chainId: network.chainId.toString(),
+        contractAddress
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function verifyAuditProof({
+  batchId,
+  commitment,
+  leafIndex,
+  proof
+}) {
+  validateBytes32(batchId, 'batchId');
+  validateBytes32(commitment, 'commitment');
+
+  if (!Number.isSafeInteger(leafIndex) || leafIndex < 0) {
+    throw new Error('Invalid leaf index');
+  }
+
+  if (
+    !Array.isArray(proof) ||
+    !proof.every(item => BYTES32_REGEX.test(item))
+  ) {
+    throw new Error('Invalid Merkle proof');
+  }
+
+  const { contract } = await getBlockchain();
+
+  return contract.verifyAuditProof(
+    batchId,
+    commitment,
+    leafIndex,
+    proof
+  );
+}
+
 async function getAuditEvent(eventId) {
   validateBytes32(eventId, 'eventId');
 
@@ -294,5 +396,8 @@ module.exports = {
   getLatestVersion,
   anchorIntegrity,
   anchorAuditEvent,
-  getAuditEvent
+  getAuditEvent,
+  anchorAuditBatch,
+  getAuditBatchRoot,
+  verifyAuditProof
 };

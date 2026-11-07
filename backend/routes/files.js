@@ -116,7 +116,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       accountRef: req.user.accountRef,
       eventType: 'FILE_UPLOADED',
       initiator: 'USER',
-      severity: 'INFO'
+      severity: 'LOW',
+      details: {
+        operation: 'encrypted_file_upload',
+        fileId: String(newFile._id),
+        size: req.file.size
+      }
     });
 
     await recoveryStore.append({
@@ -314,7 +319,11 @@ router.delete('/:fileId', async (req, res) => {
       accountRef: req.user.accountRef,
       eventType: 'FILE_DELETED',
       initiator: 'USER',
-      severity: 'WARNING'
+      severity: 'MEDIUM',
+      details: {
+        operation: 'file_deletion',
+        fileId: String(file._id)
+      }
     });
 
     res.json({ message: 'File deleted' });
@@ -398,7 +407,12 @@ router.post('/:fileId/recovery/repair', async (req, res) => {
       accountRef: req.user.accountRef,
       eventType: 'FILE_CEK_REPAIRED',
       initiator: 'USER',
-      severity: 'WARNING'
+      severity: 'HIGH',
+      details: {
+        operation: 'file_cek_repair',
+        fileId: String(file._id),
+        version: newVersion
+      }
     });
 
     res.json({

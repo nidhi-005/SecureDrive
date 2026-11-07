@@ -1,4 +1,9 @@
-* { margin: 0; padding: 0; box-sizing: border-box; }
+/* GLOBAL STYLES */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -7,8 +12,9 @@ body {
   min-height: 100vh;
 }
 
-/* NAV */
+/* NAVBAR */
 nav {
+  position: relative;
   background: #1a1d27;
   border-bottom: 1px solid #2d3148;
   padding: 0 32px;
@@ -18,18 +24,21 @@ nav {
   justify-content: space-between;
 }
 
-.logo { font-size: 20px; font-weight: 700; color: #6ee7b7; }
-.logo span { color: #fff; }
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: #6ee7b7;
+}
 
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 14px;
-  color: #94a3b8;
+.logo span {
+  color: #fff;
 }
 
 #dashboard-tabs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -53,6 +62,15 @@ nav {
   background: rgba(45, 106, 79, 0.16);
 }
 
+/* Right navbar items */
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  color: #94a3b8;
+}
+
 #logout-btn {
   background: transparent;
   border: 1px solid #374151;
@@ -64,7 +82,10 @@ nav {
   transition: all 0.2s;
 }
 
-#logout-btn:hover { border-color: #6ee7b7; color: #6ee7b7; }
+#logout-btn:hover {
+  border-color: #6ee7b7;
+  color: #6ee7b7;
+}
 
 .delete-account-btn {
   background: #b91c1c;
@@ -80,7 +101,25 @@ nav {
   cursor: wait;
 }
 
-/* CONTAINER */
+/* AUTHENTICATION AND DASHBOARD */
+#auth-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0f1117;
+}
+
+#app-screen {
+  background: #0f1117;
+  min-height: calc(100vh - 60px);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* MAIN CONTAINER */
 .container {
   max-width: 860px;
   margin: 40px auto;
@@ -104,10 +143,25 @@ nav {
   background: rgba(110, 231, 183, 0.04);
 }
 
-.upload-zone input { display: none; }
-.upload-icon       { font-size: 40px; margin-bottom: 14px; }
-.upload-zone h3    { font-size: 16px; margin-bottom: 6px; color: #fff; }
-.upload-zone p     { font-size: 13px; color: #64748b; }
+.upload-zone input {
+  display: none;
+}
+
+.upload-icon {
+  font-size: 40px;
+  margin-bottom: 14px;
+}
+
+.upload-zone h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+  color: #fff;
+}
+
+.upload-zone p {
+  font-size: 13px;
+  color: #64748b;
+}
 
 /* UPLOAD STATUS */
 #upload-status {
@@ -121,7 +175,7 @@ nav {
   color: #6ee7b7;
 }
 
-/* FILES */
+/* FILES SECTION */
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -137,7 +191,11 @@ nav {
   text-transform: uppercase;
 }
 
-#files-list { display: flex; flex-direction: column; gap: 10px; }
+#files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
 .file-card {
   background: #1a1d27;
@@ -150,14 +208,37 @@ nav {
   transition: border-color 0.2s;
 }
 
-.file-card:hover { border-color: #374151; }
+.file-card:hover {
+  border-color: #374151;
+}
 
-.file-left  { display: flex; align-items: center; gap: 14px; }
-.file-icon  { font-size: 26px; }
-.file-name  { font-size: 14px; color: #e2e8f0; margin-bottom: 3px; }
-.file-meta  { font-size: 12px; color: #475569; }
-.file-actions { display: flex; gap: 8px; }
+.file-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 
+.file-icon {
+  font-size: 26px;
+}
+
+.file-name {
+  font-size: 14px;
+  color: #e2e8f0;
+  margin-bottom: 3px;
+}
+
+.file-meta {
+  font-size: 12px;
+  color: #475569;
+}
+
+.file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* FILE ACTION BUTTONS */
 .btn-download {
   background: transparent;
   border: 1px solid #2d6a4f;
@@ -169,7 +250,9 @@ nav {
   transition: all 0.2s;
 }
 
-.btn-download:hover { background: rgba(45,106,79,0.4); }
+.btn-download:hover {
+  background: rgba(45, 106, 79, 0.4);
+}
 
 .btn-delete {
   background: transparent;
@@ -182,8 +265,11 @@ nav {
   transition: all 0.2s;
 }
 
-.btn-delete:hover { background: rgba(74,25,66,0.4); }
+.btn-delete:hover {
+  background: rgba(74, 25, 66, 0.4);
+}
 
+/* EMPTY STATES */
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -192,12 +278,16 @@ nav {
   line-height: 1.8;
 }
 
-.empty-state .empty-icon { font-size: 44px; margin-bottom: 14px; }
+.empty-state .empty-icon {
+  font-size: 44px;
+  margin-bottom: 14px;
+}
 
-/* TOAST */
+/* TOAST NOTIFICATIONS */
 #toast {
   position: fixed;
-  bottom: 24px; right: 24px;
+  bottom: 24px;
+  right: 24px;
   background: #1a1d27;
   border: 1px solid #2d3148;
   border-radius: 8px;
@@ -208,50 +298,33 @@ nav {
   transition: all 0.2s;
 }
 
-#toast.success { border-color: #2d6a4f; color: #6ee7b7; }
-#toast.error   { border-color: #7f1d1d; color: #f87171; }
-
-/* Auth screen centering */
-#auth-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: #0f1117;
+#toast.success {
+  border-color: #2d6a4f;
+  color: #6ee7b7;
 }
 
-/* Dashboard screen */
-#app-screen {
-  background: #0f1117;
-  min-height: calc(100vh - 60px);
+#toast.error {
+  border-color: #7f1d1d;
+  color: #f87171;
 }
 
-/* Remove body flex from auth.css — add this override */
-body {
-  margin: 0;
-  padding: 0;
-  background: #0f1117;
-}
-/* =========================================================
-   SECUREDRIVE — AUDIT DASHBOARD
-   Security Operations Dashboard Theme
-========================================================= */
-
-/* Utility */
-.hidden {
-  display: none !important;
-}
-
+/* AUDIT DASHBOARD */
 .audit-section {
-  max-width: 1120px;
+  width: 100%;
+  max-width: 1176px;
   margin: 65px auto 50px;
   padding: 35px 28px;
   border-top: 1px solid #283449;
   position: relative;
 }
 
-/* Main heading */
+.audit-inner {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
 
+/* AUDIT SECTION HEADINGS */
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -274,8 +347,7 @@ body {
   line-height: 1.6;
 }
 
-/* Buttons */
-
+/* AUDIT BUTTONS */
 .primary-btn,
 .secondary-btn,
 .btn-verify {
@@ -325,10 +397,7 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
-/* =========================================================
-   STATISTICS CARDS
-========================================================= */
-
+/* AUDIT STATISTICS */
 .audit-stats {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -388,7 +457,6 @@ input:focus-visible {
 }
 
 /* Individual statistic colors */
-
 .audit-stat-card:nth-child(1)::after {
   background: #60a5fa;
 }
@@ -409,10 +477,7 @@ input:focus-visible {
   background: #a78bfa;
 }
 
-/* =========================================================
-   ADMIN DASHBOARD
-========================================================= */
-
+/* ADMIN AUDIT SECTION */
 .admin-audit-section {
   margin: 38px 0;
   padding: 25px;
@@ -448,10 +513,7 @@ input:focus-visible {
   background: rgba(15, 23, 42, 0.65);
 }
 
-/* =========================================================
-   FILTER SECTION
-========================================================= */
-
+/* AUDIT FILTERS */
 .audit-filters {
   display: grid;
   grid-template-columns: repeat(3, minmax(140px, 1fr)) auto auto;
@@ -461,6 +523,10 @@ input:focus-visible {
   background: #172235;
   border: 1px solid #2a394e;
   border-radius: 13px;
+}
+
+.audit-filters > * {
+  min-width: 0;
 }
 
 .audit-filters select,
@@ -496,10 +562,7 @@ input:focus-visible {
   color: #64748b;
 }
 
-/* =========================================================
-   AUDIT EVENT LIST
-========================================================= */
-
+/* AUDIT EVENTS */
 .audit-events {
   display: flex;
   flex-direction: column;
@@ -509,6 +572,7 @@ input:focus-visible {
 .audit-event-card,
 .audit-card {
   position: relative;
+  min-width: 0;
   background: linear-gradient(
     120deg,
     #1b2638,
@@ -518,6 +582,7 @@ input:focus-visible {
   border-radius: 12px;
   padding: 20px;
   transition: all 0.2s ease;
+  overflow-wrap: anywhere;
 }
 
 .audit-event-card:hover,
@@ -541,8 +606,7 @@ input:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* Event metadata */
-
+/* EVENT METADATA */
 .audit-event-meta {
   color: #8da0b8;
   font-size: 12px;
@@ -555,8 +619,31 @@ input:focus-visible {
   color: #cbd5e1;
 }
 
-/* Status badges */
+.audit-event-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
+.audit-event-info strong {
+  color: #f1f5f9;
+  font-size: 14px;
+}
+
+.audit-event-info span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.audit-event-info small {
+  color: #64748b;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* STATUS BADGES */
 .audit-status {
   display: inline-flex;
   align-items: center;
@@ -586,8 +673,7 @@ input:focus-visible {
   color: #fca5a5;
 }
 
-/* Severity colors */
-
+/* SEVERITY COLORS */
 .severity-CRITICAL {
   color: #f87171;
 }
@@ -600,8 +686,7 @@ input:focus-visible {
   color: #60a5fa;
 }
 
-/* Event actions */
-
+/* EVENT ACTIONS */
 .audit-event-actions {
   display: flex;
   gap: 10px;
@@ -620,34 +705,7 @@ input:focus-visible {
   border-color: #34d399;
 }
 
-/* Compatibility with auditDashboard.js */
-
-.audit-event-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.audit-event-info strong {
-  color: #f1f5f9;
-  font-size: 14px;
-}
-
-.audit-event-info span {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.audit-event-info small {
-  color: #64748b;
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-/* Verification results */
-
+/* VERIFICATION RESULTS */
 .verification-result {
   margin-top: 14px;
   padding: 12px 14px;
@@ -671,10 +729,7 @@ input:focus-visible {
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* =========================================================
-   EMPTY STATES
-========================================================= */
-
+/* AUDIT EMPTY STATE */
 .audit-empty {
   text-align: center;
   padding: 45px 20px;
@@ -685,10 +740,7 @@ input:focus-visible {
   font-size: 13px;
 }
 
-/* =========================================================
-   PAGINATION
-========================================================= */
-
+/* AUDIT PAGINATION */
 .audit-pagination {
   display: flex;
   justify-content: center;
@@ -705,10 +757,7 @@ input:focus-visible {
   text-align: center;
 }
 
-/* =========================================================
-   VERIFICATION MODAL
-========================================================= */
-
+/* VERIFICATION MODAL */
 .audit-modal {
   position: fixed;
   inset: 0;
@@ -751,6 +800,7 @@ input:focus-visible {
   line-height: 1.7;
 }
 
+/* Modal close button */
 .modal-close {
   position: absolute;
   right: 17px;
@@ -767,6 +817,7 @@ input:focus-visible {
   color: white;
 }
 
+/* Verification result */
 .verify-result {
   padding: 16px;
   border-radius: 10px;
@@ -794,6 +845,7 @@ input:focus-visible {
   color: #fca5a5;
 }
 
+/* Verification details */
 #verifyDetails {
   font-size: 12px;
   color: #a5b4c7;
@@ -816,11 +868,7 @@ input:focus-visible {
   color: #dbeafe;
 }
 
-.verification-details code {
-  color: #6ee7b7;
-  overflow-wrap: anywhere;
-}
-
+.verification-details code,
 .verification-details a {
   color: #6ee7b7;
 }
@@ -830,10 +878,46 @@ input:focus-visible {
   color: #cbd5e1;
 }
 
-/* =========================================================
-   RESPONSIVE DESIGN
-========================================================= */
+.audit-insights-grid,
+.audit-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 20px 0;
+}
 
+.audit-insight-card,
+.audit-chart-card {
+  padding: 20px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+}
+
+.audit-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.audit-insight-card strong {
+  font-size: 1.8rem;
+}
+
+.audit-chart-container {
+  height: 280px;
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .audit-insights-grid,
+  .audit-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* RESPONSIVE DESIGN */
+/* Tablets and smaller desktops */
 @media (max-width: 1000px) {
   .audit-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -844,7 +928,61 @@ input:focus-visible {
   }
 }
 
+/* Mobile devices */
 @media (max-width: 650px) {
+
+  /* Mobile navbar */
+  nav {
+    height: auto;
+    min-height: 60px;
+    padding: 12px 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .nav-right {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  /* Center tabs on their own row */
+  #dashboard-tabs {
+    position: static;
+    transform: none;
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+
+  #user-email {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  /* Main container */
+  .container {
+    margin: 25px auto;
+    padding: 0 16px;
+  }
+
+  /* File cards */
+  .file-card {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .file-actions {
+    width: 100%;
+  }
+
+  .file-actions button {
+    flex: 1;
+  }
+
+  /* Audit section */
   .audit-section {
     margin-top: 35px;
     padding: 25px 16px;
@@ -859,6 +997,7 @@ input:focus-visible {
     font-size: 20px;
   }
 
+  /* Audit statistics */
   .audit-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
@@ -877,10 +1016,12 @@ input:focus-visible {
     font-size: 10px;
   }
 
+  /* Admin section */
   .admin-audit-section {
     padding: 17px;
   }
 
+  /* Audit filters */
   .audit-filters {
     grid-template-columns: 1fr;
     padding: 14px;
@@ -890,6 +1031,7 @@ input:focus-visible {
     width: 100%;
   }
 
+  /* Audit event cards */
   .audit-event-card,
   .audit-card {
     padding: 16px;
@@ -900,94 +1042,245 @@ input:focus-visible {
     flex-direction: column;
   }
 
+  /* Pagination */
   .audit-pagination {
     gap: 10px;
   }
 
+  /* Verification modal */
   .audit-modal-content {
     padding: 23px 18px;
   }
 }
 
+/* Extra-small mobile devices */
 @media (max-width: 380px) {
   .audit-stats {
     grid-template-columns: 1fr;
   }
 }
 
-.audit-inner {
-  max-width: 1120px;
-  margin: 0 auto;
-}
 
-@media (max-width: 650px) {
-  nav {
-    height: auto;
-    min-height: 60px;
-    padding: 12px 16px;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
+/* ============================================================
+   SECUREDRIVE — AUDIT DASHBOARD POLISH
+   Append to the bottom of dashboard.css
+   ============================================================ */
 
-  .nav-right {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
-    font-size: 12px;
-  }
-
-  #dashboard-tabs {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-  }
-
-  #user-email {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-  }
-
-  .container {
-    margin: 25px auto;
-    padding: 0 16px;
-  }
-
-  .file-card {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .file-actions {
-    width: 100%;
-  }
-
-  .file-actions button {
-    flex: 1;
-  }
-}
-
-.audit-inner {
-  width: 100%;
-  max-width: 1120px;
-  margin: 0 auto;
-}
-
+/* Audit section layout */
 .audit-section {
-  width: 100%;
-  max-width: 1176px;
+  max-width: 1440px;
+  margin: 35px auto 50px;
+  padding: 32px clamp(16px, 3vw, 40px);
+  border-top: 1px solid #283449;
 }
 
-.audit-event-card,
-.audit-card {
+.audit-inner {
+  max-width: 1360px;
+}
+
+/* Insight cards */
+.audit-insights-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 22px 0 30px;
+}
+
+.audit-insight-card {
   min-width: 0;
+  min-height: 105px;
+  padding: 19px;
+  background: linear-gradient(145deg, #1b2638, #151e2d);
+  border: 1px solid #2a394e;
+  border-radius: 12px;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.audit-insight-card:hover {
+  border-color: #426078;
+  transform: translateY(-2px);
+}
+
+.audit-insight-card span {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.audit-insight-card strong {
+  color: #f1f5f9;
+  font-size: clamp(19px, 2vw, 27px);
+  font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.audit-event-info {
+/* Chart cards */
+.audit-charts-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin: 25px 0 35px;
+}
+
+.audit-chart-card {
+  min-width: 0;
+  padding: 22px;
+  background: linear-gradient(145deg, #1b2638, #151e2d);
+  border: 1px solid #2a394e;
+  border-radius: 13px;
+  transition: border-color 0.2s;
+}
+
+.audit-chart-card:hover {
+  border-color: #426078;
+}
+
+.audit-chart-card h3 {
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 650;
+  margin-bottom: 20px;
+}
+
+.audit-chart-container {
+  height: 280px;
+  min-width: 0;
+  position: relative;
+}
+
+/* Dashboard controls */
+.audit-dashboard-controls {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 25px 0 15px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.audit-dashboard-controls select {
+  background: #101a2a;
+  color: #dbeafe;
+  border: 1px solid #34445d;
+  border-radius: 8px;
+  padding: 10px 13px;
+}
+
+/* Admin statistics */
+.admin-audit-section .audit-stats {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* Additional blockchain status */
+.status-BATCHED {
+  background: rgba(96, 165, 250, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  color: #93c5fd;
+}
+
+/* Updated severity colors */
+.severity-LOW {
+  color: #6ee7b7;
+}
+
+.severity-MEDIUM {
+  color: #fbbf24;
+}
+
+.severity-HIGH {
+  color: #fb923c;
+}
+
+.severity-CRITICAL {
+  color: #f87171;
+}
+
+/* Verification details */
+.verification-details {
   min-width: 0;
 }
 
-.audit-filters > * {
-  min-width: 0;
+.verification-details code {
+  overflow-wrap: anywhere;
+}
+
+.verification-details a {
+  text-decoration: none;
+  border-bottom: 1px solid rgba(110, 231, 183, 0.4);
+}
+
+.verification-details a:hover {
+  color: #a7f3d0;
+}
+
+/* Event metadata readability */
+.audit-event-meta > div {
+  margin-bottom: 3px;
+}
+
+.audit-event-meta strong {
+  display: inline-block;
+  margin-right: 3px;
+}
+
+/* Tablet */
+@media (max-width: 1000px) {
+  .audit-insights-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .audit-stats,
+  .admin-audit-section .audit-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Mobile */
+@media (max-width: 650px) {
+  .audit-section {
+    padding: 22px 14px;
+    margin-top: 20px;
+  }
+
+  .audit-insights-grid,
+  .audit-charts-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .audit-insight-card {
+    min-height: 90px;
+  }
+
+  .audit-chart-card {
+    padding: 16px;
+  }
+
+  .audit-chart-container {
+    height: 240px;
+  }
+
+  .audit-dashboard-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .audit-dashboard-controls select {
+    width: 100%;
+  }
+
+  .admin-audit-section .audit-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 380px) {
+  .audit-insights-grid,
+  .admin-audit-section .audit-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-chart-container {
+    height: 210px;
+  }
 }

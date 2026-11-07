@@ -15,6 +15,8 @@ const EXPLORER_BASES = {
 let isAdmin = false;
 let currentPage = 1;
 let totalPages = 1;
+let selectedDays = 30;
+const auditCharts = {};
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -55,6 +57,178 @@ function getFilters() {
   return params;
 }
 
+function renderAuditCharts(stats) {
+  if (typeof Chart === 'undefined') {
+    console.error('Chart.js is not loaded');
+    return;
+  }
+
+  const chartConfigs = {
+    auditTrendChart: {
+      type: 'line',
+      data: {
+        labels: stats.daily.map(x => x._id),
+        datasets: [{
+          label: 'Audit events',
+          data: stats.daily.map(x => x.count),
+          tension: 0.35,
+          fill: true
+        }]
+      }
+    },
+
+    auditSeverityChart: {
+      type: 'doughnut',
+      data: {
+        labels: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+        datasets: [{
+          data: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map(
+            level => stats.severity.find(x => x._id === level)?.count || 0
+          )
+        }]
+      }
+    },
+
+    auditCategoryChart: {
+      type: 'bar',
+      data: {
+        labels: stats.categories.map(x => x._id.replace(/_/g, ' ')),
+        datasets: [{
+          label: 'Events',
+          data: stats.categories.map(x => x.count),
+          backgroundColor: '#1eb5fb'
+        }]
+      }
+    },
+
+    auditBlockchainChart: {
+      type: 'doughnut',
+      data: {
+        labels: ['Anchored', 'Pending', 'Batched', 'Failed'],
+        datasets: [{
+          data: [
+            stats.anchoring.anchored,
+            stats.anchoring.pending,
+            stats.anchoring.batched,
+            stats.anchoring.failed
+          ]
+        }]
+      }
+    },
+
+    auditEventTypeChart: {
+      type: 'bar',
+      data: {
+        labels: stats.eventTypes.map(x =>
+          x._id.replace(/_/g, ' ')
+        ),
+        datasets: [{
+          label: 'Events',
+          data: stats.eventTypes.map(x => x.count),
+          backgroundColor: '#1eb5fb'
+        }]
+      }
+    },
+
+    auditAccountChart: {
+      type: 'bar',
+      data: {
+        labels: stats.accounts.map(x => x._id),
+        datasets: [{
+          label: 'Audit events',
+          data: stats.accounts.map(x => x.total),
+          backgroundColor: '#1eb5fb'
+        }]
+      }
+    },
+
+    auditIncidentAccountChart: {
+      type: 'bar',
+      data: {
+        labels: stats.security.incidentAccounts.map(x => x._id),
+        datasets: [{
+          label: 'Security incidents',
+          data: stats.security.incidentAccounts.map(x => x.incidents),
+          backgroundColor: '#1eb5fb'
+        }]
+      }
+    }
+  };
+
+  Object.entries(chartConfigs).forEach(([id, config]) => {
+    if (
+      !isAdmin &&
+      ['auditAccountChart', 'auditIncidentAccountChart'].includes(id)
+    ) {
+      return;
+    }
+
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+
+    if (auditCharts[id]) {
+      auditCharts[id].destroy();
+    }
+
+    auditCharts[id] = new Chart(canvas, {
+      ...config,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: config.type === 'doughnut',
+            position: 'bottom'
+          }
+        },
+        scales: config.type === 'line' || config.type === 'bar'
+          ? { y: { beginAtZero: true, ticks: { precision: 0 } } }
+          : {}
+      }
+    });
+  });
+
+  const formatDuration = ms => {
+    if (!ms) return '0 min';
+
+    const minutes = Math.floor(ms / 60000);
+
+    if (minutes < 60) return `${minutes} min`;
+
+    const hours = Math.floor(minutes / 60);
+
+    if (hours < 24) return `${hours} hr`;
+
+    return `${Math.floor(hours / 24)} days`;
+  };
+
+  const insights = {
+    auditFailedLogins: stats.security.failedLogins,
+    auditIntegrityMismatches: stats.security.integrityMismatches,
+    auditRecoveryFailures: stats.security.recoveryFailures,
+
+    auditAnchorSuccessRate: `${stats.anchoring.successRate}%`,
+
+    auditFailedLoginRate: `${stats.security.failedLoginRate}%`,
+
+    auditSuspiciousEvents: stats.security.suspiciousEvents
+      .reduce((sum, item) => sum + item.count, 0),
+
+    auditAverageAnchorTime: formatDuration(
+      stats.anchoring.averageConfirmationMs
+    ),
+
+    auditOldestPendingAge: formatDuration(
+      stats.anchoring.oldestPendingAgeMs
+    )
+  };
+
+  Object.entries(insights).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
+  });
+}
+
 async function loadAuditStats() {
   const statsContainer = document.getElementById(
     isAdmin ? 'adminAuditSection' : 'userAuditStats'
@@ -64,28 +238,31 @@ async function loadAuditStats() {
 
   try {
     const stats = isAdmin
-      ? await apiGetAdminAuditStats()
-      : await apiGetMyAuditStats();
+      ? await apiGetAdminAuditStats(selectedDays)
+      : await apiGetMyAuditStats(selectedDays);
     const values = isAdmin
       ? {
-          adminAuditTotal: stats.total,
-          adminAuditAnchored: stats.anchored,
-          adminAuditPending: stats.pending,
-          adminAuditFailed: stats.failed,
-          adminAuditAccounts: stats.accountsWithEvents
-        }
+        adminAuditTotal: stats.total,
+        adminAuditAnchored: stats.anchoring.anchored,
+        adminAuditPending: stats.anchoring.pending,
+        adminAuditFailed: stats.anchoring.failed,
+        adminAuditAccounts: stats.accountsWithEvents
+      }
       : {
-          auditTotal: stats.total,
-          auditAnchored: stats.anchored,
-          auditPending: stats.pending,
-          auditFailed: stats.failed,
-          auditCritical: stats.critical
-        };
+        auditTotal: stats.total,
+        auditAnchored: stats.anchoring.anchored,
+        auditPending: stats.anchoring.pending,
+        auditFailed: stats.anchoring.failed,
+        auditCritical: stats.severity.find(
+          item => item._id === 'CRITICAL'
+        )?.count || 0
+      };
 
     Object.entries(values).forEach(([id, value]) => {
       const element = document.getElementById(id);
       if (element) element.textContent = Number(value) || 0;
     });
+    renderAuditCharts(stats);
   } catch (error) {
     console.error('Failed to load audit statistics:', error);
     showAuditToast('Failed to load audit statistics', 'error');
@@ -179,13 +356,12 @@ function renderVerificationDetails(result) {
       <p><strong>Event ID:</strong> ${escapeHtml(result.eventId)}</p>
       <p><strong>Audit record commitment:</strong> ${escapeHtml(database.commitment || 'Unavailable')}</p>
       <p><strong>On-chain commitment:</strong> ${escapeHtml(blockchain.commitment || 'Not found')}</p>
-      <p><strong>Transaction hash:</strong> ${
-        transactionHash
-          ? `${escapeHtml(transactionHash)}${explorerUrl
-            ? ` · <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer">Open in block explorer</a>`
-            : ' · No public explorer link is configured for this chain ID.'}`
-          : 'Not available'
-      }</p>
+      <p><strong>Transaction hash:</strong> ${transactionHash
+      ? `${escapeHtml(transactionHash)}${explorerUrl
+        ? ` · <a href="${explorerUrl}" target="_blank" rel="noopener noreferrer">Open in block explorer</a>`
+        : ' · No public explorer link is configured for this chain ID.'}`
+      : 'Not available'
+    }</p>
       ${blockchain.anchoredAt ? `<p><strong>Anchored at:</strong> ${escapeHtml(blockchain.anchoredAt)}</p>` : ''}
       ${blockchain.signer ? `<p><strong>Signer:</strong> ${escapeHtml(blockchain.signer)}</p>` : ''}
       <p class="verification-guidance">For an independent check, open the contract on a block explorer for this chain,
@@ -228,6 +404,13 @@ async function verifyAuditEvent(eventId, button) {
 
 function attachAuditListeners() {
   const container = document.getElementById('auditEventsContainer');
+
+  document.getElementById('auditPeriod')
+    ?.addEventListener('change', async event => {
+      selectedDays = Number(event.target.value) || 30;
+      currentPage = 1;
+      await refreshAuditDashboard();
+    });
 
   if (container && container.dataset.listenersAttached !== 'true') {
     container.dataset.listenersAttached = 'true';
@@ -296,3 +479,4 @@ export {
   refreshAuditDashboard,
   verifyAuditEvent
 };
+

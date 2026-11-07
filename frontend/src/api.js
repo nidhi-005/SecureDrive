@@ -395,8 +395,8 @@ async function apiGetMyAudit(params = {}) {
 }
 
 // Get logged-in user's audit statistics
-async function apiGetMyAuditStats() {
-  return auditRequest('/me/stats');
+async function apiGetMyAuditStats(days = 30) {
+  return auditRequest(`/me/stats?days=${days}`);
 }
 
 // Get all audit events (ADMIN only)
@@ -407,8 +407,8 @@ async function apiGetAdminAudit(params = {}) {
 }
 
 // Get global audit statistics (ADMIN only)
-async function apiGetAdminAuditStats() {
-  return auditRequest('/admin/stats');
+async function apiGetAdminAuditStats(days = 30) {
+  return auditRequest(`/admin/stats?days=${days}`);
 }
 
 // Verify one event against the blockchain

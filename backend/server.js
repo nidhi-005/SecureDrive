@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const auth     = require('./middleware/auth');
 const { startDeletionWorker } = require('./workers/accountDeletionWorker');
 const { startAuditAnchorWorker } = require('./workers/auditAnchorWorker');
+const { startAuditBatchWorker } =
+  require('./workers/auditBatchWorker');
 
 const app = express();
 app.use(cors({
@@ -62,7 +64,7 @@ mongoose.connect(process.env.MONGO_URI)
     console.log("Connected DB:", mongoose.connection.name);
 
     startDeletionWorker();
-    startAuditAnchorWorker();
+    startAuditBatchWorker();
   })
   .catch(err => {
     console.error('MongoDB connection failed:', err);

@@ -118,12 +118,7 @@ async function processEvent(event, leaseId) {
 
     // First check whether this event was already anchored.
     // The contract reverts when the event does not exist.
-    try {
-      existingRecord = await getAuditEvent(event.eventId);
-    } catch (lookupError) {
-      // Could mean the record is absent or the RPC is temporarily
-      // unavailable. We attempt anchoring; failures remain retryable.
-    }
+    existingRecord = await getAuditEvent(event.eventId);
 
     if (existingRecord && existingRecord.exists) {
       if (!commitmentsMatch(

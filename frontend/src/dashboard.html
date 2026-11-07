@@ -12,10 +12,10 @@
   <nav>
     <div class="logo">Secure<span>Drive</span></div>
     <div id="dashboard-tabs" class="dashboard-tabs hidden" role="tablist" aria-label="Dashboard pages">
-      <button id="files-tab" class="dashboard-tab" type="button" role="tab"
-        aria-controls="files-page" data-page="files">Files</button>
-      <button id="audit-tab" class="dashboard-tab" type="button" role="tab"
-        aria-controls="audit-page" data-page="audit">Audit</button>
+      <button id="files-tab" class="dashboard-tab" type="button" role="tab" aria-controls="files-page"
+        data-page="files">Files</button>
+      <button id="audit-tab" class="dashboard-tab" type="button" role="tab" aria-controls="audit-page"
+        data-page="audit">Audit</button>
     </div>
     <div class="nav-right">
       <span id="user-email"></span>
@@ -83,8 +83,109 @@
               <div class="audit-stat-card"><span>Anchored</span><strong id="adminAuditAnchored">--</strong></div>
               <div class="audit-stat-card"><span>Pending</span><strong id="adminAuditPending">--</strong></div>
               <div class="audit-stat-card"><span>Failed</span><strong id="adminAuditFailed">--</strong></div>
-              <div class="audit-stat-card"><span>Accounts With Events</span><strong id="adminAuditAccounts">--</strong></div>
+              <div class="audit-stat-card"><span>Accounts With Events</span><strong id="adminAuditAccounts">--</strong>
+              </div>
             </div>
+          </div>
+
+          <div class="audit-dashboard-controls">
+            <label for="auditPeriod">Time period</label>
+            <select id="auditPeriod">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="365">Last year</option>
+            </select>
+          </div>
+
+          <div class="audit-insights-grid">
+            <div class="audit-insight-card">
+              <span>Failed logins</span>
+              <strong id="auditFailedLogins">0</strong>
+            </div>
+            <div class="audit-insight-card">
+              <span>Integrity mismatches</span>
+              <strong id="auditIntegrityMismatches">0</strong>
+            </div>
+            <div class="audit-insight-card">
+              <span>Key recovery failures</span>
+              <strong id="auditRecoveryFailures">0</strong>
+            </div>
+            <div class="audit-insight-card">
+              <span>Anchoring success rate</span>
+              <strong id="auditAnchorSuccessRate">0%</strong>
+            </div>
+
+            <div class="audit-insight-card">
+              <span>Failed login rate</span>
+              <strong id="auditFailedLoginRate">0%</strong>
+            </div>
+
+            <div class="audit-insight-card">
+              <span>Suspicious events</span>
+              <strong id="auditSuspiciousEvents">0</strong>
+            </div>
+
+            <div class="audit-insight-card">
+              <span>Average anchoring time</span>
+              <strong id="auditAverageAnchorTime">--</strong>
+            </div>
+
+            <div class="audit-insight-card">
+              <span>Oldest pending event</span>
+              <strong id="auditOldestPendingAge">--</strong>
+            </div>
+          </div>
+
+          <div class="audit-charts-grid">
+            <section class="audit-chart-card">
+              <h3>Event activity trend</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditTrendChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Severity distribution</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditSeverityChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Event categories</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditCategoryChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Blockchain anchoring</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditBlockchainChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Event type distribution</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditEventTypeChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Most active accounts</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditAccountChart"></canvas>
+              </div>
+            </section>
+
+            <section class="audit-chart-card">
+              <h3>Accounts with security incidents</h3>
+              <div class="audit-chart-container">
+                <canvas id="auditIncidentAccountChart"></canvas>
+              </div>
+            </section>
           </div>
 
           <div class="audit-filters">
@@ -98,9 +199,7 @@
               <option value="LOGIN_FAILED">Login Failed</option>
               <option value="FILE_UPLOADED">File Uploaded</option>
               <option value="FILE_DELETED">File Deleted</option>
-              <option value="FILE_CEK_RECOVERED">File Key Recovered</option>
               <option value="FILE_CEK_REPAIRED">File Key Repaired</option>
-              <option value="MASTER_KEY_RECOVERED">Master Key Recovered</option>
               <option value="MASTER_KEY_REPAIRED">Master Key Repaired</option>
               <option value="MASTER_KEY_RECOVERY_FAILED">Master Key Recovery Failed</option>
               <option value="INTEGRITY_VERIFIED">Integrity Verified</option>
@@ -109,8 +208,9 @@
 
             <select id="auditSeverityFilter" aria-label="Filter by severity">
               <option value="">All severities</option>
-              <option value="INFO">Info</option>
-              <option value="WARNING">Warning</option>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
               <option value="CRITICAL">Critical</option>
             </select>
 
@@ -119,6 +219,7 @@
               <option value="PENDING">Pending</option>
               <option value="ANCHORED">Anchored</option>
               <option value="FAILED">Failed</option>
+              <option value="BATCHED">Batched</option>
             </select>
 
             <input id="adminAccountFilter" type="text" placeholder="Account reference (admin)"
@@ -141,6 +242,7 @@
   </main>
 
   <div id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script type="module" src="js/dashboard.js"></script>
 </body>
 
