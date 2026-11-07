@@ -117,3 +117,38 @@ input:focus { border-color: #6ee7b7; }
   margin-top: 8px;
   display: none;
 }
+
+.auth-box { max-width: 440px; width: calc(100% - 32px); }
+.auth-box section { width: 100%; }
+.helper-text {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.restore-box {
+  border-top: 1px solid #2d3148;
+  margin-top: 22px;
+  padding-top: 14px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+.restore-box summary { cursor: pointer; color: #6ee7b7; }
+input[type="file"] {
+  width: 100%;
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.btn-secondary {
+  width: 100%;
+  margin-top: 14px;
+  background: transparent;
+  color: #6ee7b7;
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

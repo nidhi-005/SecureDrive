@@ -6,6 +6,7 @@ import {
 
 import {
   clearSession,
+  getMasterKey,
   getUserEmail,
   hydrateSession,
   isSessionActive
@@ -14,10 +15,15 @@ import {
 import { initAuditDashboard } from './auditDashboard.js';
 import { initFileDashboard } from './fileDashboard.js';
 
-function handleLogout() {
-  clearSession();
-  apiLogout();
-  window.location.href = 'index.html';
+async function handleLogout() {
+  try {
+    await apiLogout();
+  } catch (error) {
+    console.warn('Server logout could not be confirmed:', error);
+  } finally {
+    clearSession();
+    window.location.href = 'index.html';
+  }
 }
 
 function updateAdminVisibility(isAdmin) {
@@ -117,7 +123,14 @@ async function init() {
   const restored = await hydrateSession();
 
   if (!restored || !isSessionActive()) {
-    window.location.href = 'index.html';
+    window.location.replace('index.html');
+    return;
+  }
+
+  // A page reload intentionally discards the in-memory Master Key.
+  // Re-authenticate the session and ask for the separate encryption password.
+  if (!getMasterKey()) {
+    window.location.replace('index.html?restore=1');
     return;
   }
 

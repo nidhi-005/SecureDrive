@@ -6,7 +6,7 @@
 // ============================================================
 
 // const BASE_URL = 'https://securedrive-mmls.onrender.com/api';
-const BASE_URL = 'http://127.0.0.1:3000/api'
+const BASE_URL = (import.meta.env.VITE_API_BASE || 'http://localhost:3000/api').replace(/\/$/, '')
 
 // ─────────────────────────────────────────────────────────────
 // Helper: get stored JWT token from sessionStorage
@@ -23,6 +23,7 @@ function saveToken(token) {
 
 function clearToken() {
   sessionStorage.removeItem('token');
+  sessionStorage.removeItem('secureDriveUserEmail');
 }
 
 // Helper: build auth header for protected routes
@@ -127,11 +128,86 @@ async function apiLoginFinish(
 }
 
 // ─────────────────────────────────────────────────────────────
+// AUTH — DID challenge / registration / login
+// ─────────────────────────────────────────────────────────────
+
+async function apiDidChallenge(email, did, purpose) {
+  const res = await fetch(`${BASE_URL}/auth/did/challenge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, purpose })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not create DID challenge');
+  return data;
+}
+
+async function apiDidRegister(email, did, challengeId, signature) {
+  const res = await fetch(`${BASE_URL}/auth/did/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, challengeId, signature })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'DID registration failed');
+  saveToken(data.token);
+  sessionStorage.setItem('secureDriveUserEmail', data.email || email);
+  return data;
+}
+
+async function apiDidLogin(email, did, challengeId, signature) {
+  const res = await fetch(`${BASE_URL}/auth/did/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, did, challengeId, signature })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'DID login failed');
+  saveToken(data.token);
+  sessionStorage.setItem('secureDriveUserEmail', data.email || email);
+  return data;
+}
+
+async function apiDidStatus() {
+  const res = await fetch(`${BASE_URL}/auth/did/status`, { headers: authHeader() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not check DID account status');
+  return data;
+}
+
+async function apiDidEncryptionSetup(encryptionSalt, wrappedMasterKey, masterKeyIV) {
+  const res = await fetch(`${BASE_URL}/auth/did/encryption-setup`, {
+    method: 'POST',
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ encryptionSalt, wrappedMasterKey, masterKeyIV })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Could not configure file encryption');
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
 // AUTH — Logout
 // ─────────────────────────────────────────────────────────────
 
-function apiLogout() {
-  clearToken();
+async function apiLogout() {
+  try {
+    await fetch(`${BASE_URL}/auth/passkey/logout`, {
+      method: 'POST',
+      headers: authHeader()
+    });
+  } finally {
+    clearToken();
+  }
+}
+
+async function apiGetPasskeySession() {
+  const res = await fetch(`${BASE_URL}/auth/passkey/session`, {
+    headers: authHeader()
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Session expired');
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -444,11 +520,10 @@ function isLoggedIn() {
 }
 
 export {
-  apiCancelAccountDeletion, apiDelete, apiDeleteAccount, apiDownload, apiGetAdminAudit,
+  apiCancelAccountDeletion, apiDelete, apiDeleteAccount, apiDidChallenge, apiDidEncryptionSetup, apiDidLogin, apiDidRegister, apiDidStatus, apiDownload, apiGetAdminAudit,
   apiGetAdminAuditStats, apiGetDeletionStatus, apiGetFileKeyRecovery,
-  apiGetMasterKeyRecovery,
-  apiGetMeta, apiGetMyAudit,
-  apiGetMyAuditStats, apiListFiles,
+  apiGetMasterKeyRecovery, apiGetMeta, apiGetMyAudit,
+  apiGetMyAuditStats, apiGetPasskeySession, apiListFiles,
   apiLoginFinish,
   apiLoginStart,
   apiLogout,

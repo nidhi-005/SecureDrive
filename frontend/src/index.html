@@ -1,89 +1,145 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws://localhost:5173 http://localhost:3000 https://securedrive-mmls.onrender.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>SecureDrive</title>
   <link rel="stylesheet" href="css/auth.css">
 </head>
 
 <body>
-
-  <div id="auth-screen">
+  <main id="auth-screen">
     <div class="auth-box">
 
       <span class="logo">Secure<span>Drive</span></span>
 
-      <h2>Welcome back</h2>
-      <p class="subtitle">
-        Your files, encrypted before they leave your device.
+      <h2 id="screen-title">Welcome to SecureDrive</h2>
+
+      <p class="subtitle" id="screen-subtitle">
+        Secure, passwordless account access.
       </p>
 
-      <div class="tabs">
-        <div class="tab active" id="tab-login">Login</div>
-        <div class="tab" id="tab-signup">Sign Up</div>
-      </div>
+      <!-- PASSKEY AUTHENTICATION -->
 
-      <!-- LOGIN -->
-      <div id="login-form">
-        <label for="login-email">Email</label>
+      <section id="passkey-section">
+
+        <label for="passkey-email">Email address</label>
+
         <input
           type="email"
-          id="login-email"
+          id="passkey-email"
           placeholder="you@example.com"
-          autocomplete="email"
+          autocomplete="username webauthn"
+          required
         >
 
-        <label for="login-password">Password</label>
-        <input
-          type="password"
-          id="login-password"
-          placeholder="Your password"
-          autocomplete="current-password"
-        >
+        <p id="passkey-message" class="error-msg" role="status"></p>
 
-        <div class="error-msg" id="login-error"></div>
-
-        <button class="btn-primary" id="login-btn">
-          Login
+        <button
+          type="button"
+          class="btn-primary"
+          id="passkey-register-btn">
+          Create account with Passkey
         </button>
-      </div>
 
-      <!-- SIGN UP -->
-      <div id="signup-form" style="display:none">
+        <button
+          type="button"
+          class="btn-secondary"
+          id="passkey-login-btn">
+          Sign in with Passkey
+        </button>
 
-        <label for="signup-email">Email</label>
-        <input
-          type="email"
-          id="signup-email"
-          placeholder="you@example.com"
-          autocomplete="email"
-        >
+      </section>
 
-        <label for="signup-password">Password</label>
+      <!-- FIRST-TIME ENCRYPTION SETUP -->
+
+      <section id="encryption-setup" style="display:none">
+
+        <h2>Protect your files</h2>
+
+        <p class="helper-text">
+          Create a separate password to protect your Master Key.
+          This password is not your passkey.
+        </p>
+
+        <label for="encryption-password">
+          File encryption password
+        </label>
+
         <input
           type="password"
-          id="signup-password"
-          placeholder="Min. 8 characters"
+          id="encryption-password"
           autocomplete="new-password"
+          placeholder="At least 8 characters"
         >
 
-        <div class="error-msg" id="signup-error"></div>
+        <label for="encryption-password-confirm">
+          Confirm encryption password
+        </label>
 
-        <button class="btn-primary" id="signup-btn">
-          Create Account
+        <input
+          type="password"
+          id="encryption-password-confirm"
+          autocomplete="new-password"
+          placeholder="Confirm password"
+        >
+
+        <p id="setup-message" class="error-msg" role="status"></p>
+
+        <button
+          type="button"
+          class="btn-primary"
+          id="encryption-setup-btn">
+          Set up file encryption
         </button>
-      </div>
 
-      <div class="auth-note">
-        🔒 Your password never leaves your device.<br>
-        All encryption uses AES-256-GCM via Web Crypto API.
-      </div>
+      </section>
+
+      <!-- RETURNING USER MASTER KEY UNLOCK -->
+
+      <section id="encryption-unlock" style="display:none">
+
+        <h2>Unlock your files</h2>
+
+        <p class="helper-text">
+          Your passkey has been verified. Enter your separate
+          file encryption password to unlock your Master Key.
+        </p>
+
+        <label for="unlock-password">
+          File encryption password
+        </label>
+
+        <input
+          type="password"
+          id="unlock-password"
+          autocomplete="current-password"
+          placeholder="Enter encryption password"
+        >
+
+        <p id="unlock-message" class="error-msg" role="status"></p>
+
+        <button
+          type="button"
+          class="btn-primary"
+          id="encryption-unlock-btn">
+          Unlock SecureDrive
+        </button>
+
+      </section>
+
+      <p class="auth-note">
+        Authentication uses a local-device WebAuthn passkey.
+        File encryption uses AES-256-GCM with a separate PBKDF2-derived key.
+        Your file-encryption password is never sent to the server.
+        After a page reload, unlock your files again with that password.
+      </p>
 
     </div>
-  </div>
+  </main>
 
-  <script type="module" src="js/auth.js"></script>
-
+  <script type="module" src="/js/passkeyAuth.js"></script>
 </body>
 </html>

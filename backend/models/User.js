@@ -2,11 +2,7 @@ const mongoose = require('mongoose');
 const { randomUUID } = require('crypto');
 
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true, lowercase: true },
-  opaqueRegistrationRecord: { type: String, required: true },
-  encryptionSalt: { type: String, required: true },
-  wrappedMasterKey: { type: String, required: true },
-  masterKeyIV: { type: String, required: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
 
   role: {
     type: String,
@@ -15,17 +11,46 @@ const userSchema = new mongoose.Schema({
     required: true
   },
 
-  // Version of the currently active wrapped Master Key.
-  wrappedMasterKeyVersion: {
-    type: Number,
-    default: 1
-  },
+  // DID authentication fields.
+did: {
+  type: String,
+  unique: true,
+  sparse: true
+},
 
-  deletionPending: {
-    type: Boolean,
-    default: false,
-    index: true
-  },
+didMethod: {
+  type: String,
+  enum: ['did:key'],
+  default: undefined
+},
+
+authMethod: {
+  type: String,
+  enum: ['did', 'opaque', 'webauthn'],
+  default: 'opaque'
+},
+
+
+webauthnUserID: {
+  type: String,
+  default: null
+},
+  // Legacy OPAQUE authentication record remains optional for DID-only accounts.
+  opaqueRegistrationRecord: { type: String, required: false },
+
+  // Encryption fields remain optional until the separate encryption-setup stage.
+  encryptionSalt: { type: String, required: false },
+  wrappedMasterKey: { type: String, required: false },
+  masterKeyIV: { type: String, required: false },
+
+  encryptionReady: { type: Boolean, default: false },
+
+  wrappedMasterKeyVersion: { type: Number, default: 1 },
+
+  // Incrementing this invalidates all previously issued JWT sessions.
+  sessionVersion: { type: Number, default: 0 },
+
+  deletionPending: { type: Boolean, default: false, index: true },
 
   // Random pseudonymous identifier.
   // This survives in audit records after the user document is deleted.

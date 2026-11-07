@@ -13,7 +13,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@serenity-kit/opaque": "^1.1.0"
+    "@serenity-kit/opaque": "^1.1.0",
+    "@simplewebauthn/browser": "^14.0.0"
   },
   "devDependencies": {
     "vite": "^5.4.10"

@@ -19,12 +19,17 @@ module.exports = async (req, res, next) => {
     }
 
     const user = await User.findById(decoded.userId)
-      .select('_id email deletionPending accountRef role');
+      .select('_id email deletionPending accountRef role sessionVersion');
 
     if (!user) {
       return res.status(401).json({
         error: 'Account no longer exists'
       });
+    }
+
+    // Revoke older sessions after logout or a security-sensitive account action.
+    if (Number(decoded.sessionVersion || 0) !== Number(user.sessionVersion || 0)) {
+      return res.status(401).json({ error: 'Session has been revoked. Please sign in again.' });
     }
 
     // Allow only deletion management while deletion is pending.
