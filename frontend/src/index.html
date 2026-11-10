@@ -48,8 +48,22 @@
           type="button"
           class="btn-secondary"
           id="passkey-login-btn">
-          Sign in with Passkey
+          Sign in with this device's passkey
         </button>
+
+        <button
+          type="button"
+          class="btn-secondary"
+          id="passkey-hybrid-login-btn">
+          Sign in using another device (phone / QR)
+        </button>
+
+        <p class="helper-text">
+          On this device, use its fingerprint, face recognition or PIN.
+          On a different device, choose the phone / QR option and follow
+          the browser's passkey prompt. QR availability depends on your browser,
+          operating system and registered phone passkey.
+        </p>
 
       </section>
 
@@ -130,8 +144,25 @@
 
       </section>
 
+      <!-- Available after account authentication, before file-key unlock. -->
+      <section id="device-passkey-tools" style="display:none">
+        <hr>
+        <h3>Register another device</h3>
+        <p class="helper-text">
+          Add a passkey to this device, or use your phone to create a
+          cross-device passkey through the browser's QR flow.
+        </p>
+        <button type="button" class="btn-secondary" id="add-local-passkey-btn">
+          Add passkey on this device
+        </button>
+        <button type="button" class="btn-secondary" id="add-hybrid-passkey-btn">
+          Add passkey using phone / QR
+        </button>
+        <p id="device-passkey-message" class="error-msg" role="status"></p>
+      </section>
+
       <p class="auth-note">
-        Authentication uses a local-device WebAuthn passkey.
+        Authentication uses WebAuthn passkeys, including compatible synced and cross-device authenticators.
         File encryption uses AES-256-GCM with a separate PBKDF2-derived key.
         Your file-encryption password is never sent to the server.
         After a page reload, unlock your files again with that password.

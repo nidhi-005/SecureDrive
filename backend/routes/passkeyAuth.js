@@ -109,12 +109,13 @@ router.post('/register/options', passkeyCeremonyLimiter, async (req, res) => {
 
       attestationType: 'none',
 
+      // First credential is created on this device by default. Additional
+      // credentials can later be registered locally or through a phone QR flow.
+      preferredAuthenticatorType: 'localDevice',
       authenticatorSelection: {
-      authenticatorAttachment: 'platform',
-      residentKey: 'required',
-      userVerification: 'required'
-    },
-
+        residentKey: 'required',
+        userVerification: 'required'
+      },
       timeout: 60000
     });
 
@@ -233,7 +234,7 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
         publicKey: Buffer.from(credential.publicKey).toString('base64'),
         webauthnUserID: challengeRecord.webauthnUserID,
         counter: credential.counter,
-        transports: credential.transports?.length ? credential.transports : ['internal'],
+        transports: credential.transports?.length ? credential.transports : [],
         deviceType: credentialDeviceType,
         backedUp: credentialBackedUp
       });
@@ -264,6 +265,127 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
     return res.status(400).json({
       error: 'Passkey registration could not be verified'
     });
+  }
+});
+
+// ------------------------------------------------------------
+// ADD ANOTHER PASSKEY TO AN AUTHENTICATED ACCOUNT
+// These endpoints let an already-authenticated user add a local passkey
+// or register a passkey on a phone using the browser's hybrid/QR flow.
+// ------------------------------------------------------------
+router.post('/register/additional/options', auth, passkeyCeremonyLimiter, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user || user.deletionPending || user.authMethod !== 'webauthn') {
+      return res.status(401).json({ error: 'Account cannot register another passkey' });
+    }
+
+    const passkeys = await Passkey.find({ user: user._id });
+    if (!passkeys.length || !user.webauthnUserID) {
+      return res.status(409).json({ error: 'The account has no valid primary passkey identity' });
+    }
+
+    const mode = req.body.mode === 'hybrid' ? 'hybrid' : 'local';
+    const { generateRegistrationOptions } = await getWebAuthn();
+    const { rpName, rpID } = getWebAuthnConfig();
+
+    const options = await generateRegistrationOptions({
+      rpName,
+      rpID,
+      userName: user.email,
+      userID: Buffer.from(user.webauthnUserID, 'base64url'),
+      attestationType: 'none',
+      excludeCredentials: passkeys.map(passkey => ({ id: passkey.credentialId })),
+      preferredAuthenticatorType: mode === 'hybrid' ? 'remoteDevice' : 'localDevice',
+      authenticatorSelection: {
+        residentKey: 'required',
+        userVerification: 'required'
+      },
+      timeout: 60000
+    });
+
+    const challengeId = crypto.randomUUID();
+    await PasskeyChallenge.create({
+      challengeId,
+      email: user.email,
+      purpose: 'register-additional',
+      challenge: options.challenge,
+      webauthnUserID: user.webauthnUserID,
+      expiresAt: challengeExpiry()
+    });
+
+    return res.json({ options, challengeId });
+  } catch (error) {
+    console.error('Additional passkey options error:', error);
+    return res.status(500).json({ error: 'Could not start additional passkey registration' });
+  }
+});
+
+router.post('/register/additional/verify', auth, passkeyCeremonyLimiter, async (req, res) => {
+  try {
+    const response = req.body.response;
+    const { challengeId } = req.body;
+    if (!response?.id || !challengeId) {
+      return res.status(400).json({ error: 'Invalid additional passkey registration request' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user || user.deletionPending || user.authMethod !== 'webauthn') {
+      return res.status(401).json({ error: 'Account cannot register another passkey' });
+    }
+
+    const challengeRecord = await PasskeyChallenge.findOneAndDelete({
+      challengeId,
+      email: user.email,
+      purpose: 'register-additional',
+      expiresAt: { $gt: new Date() }
+    });
+    if (!challengeRecord) {
+      return res.status(401).json({ error: 'Passkey registration challenge expired or already used' });
+    }
+
+    const { verifyRegistrationResponse } = await getWebAuthn();
+    const { rpID, origin } = getWebAuthnConfig();
+    const verification = await verifyRegistrationResponse({
+      response,
+      expectedChallenge: challengeRecord.challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      requireUserVerification: true
+    });
+
+    if (!verification.verified || !verification.registrationInfo) {
+      return res.status(400).json({ error: 'Additional passkey verification failed' });
+    }
+
+    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+    const existingCredential = await Passkey.findOne({ credentialId: credential.id });
+    if (existingCredential) {
+      return res.status(409).json({ error: 'This passkey is already registered' });
+    }
+
+    await Passkey.create({
+      user: user._id,
+      credentialId: credential.id,
+      publicKey: Buffer.from(credential.publicKey).toString('base64'),
+      webauthnUserID: challengeRecord.webauthnUserID,
+      counter: credential.counter,
+      transports: credential.transports?.length ? credential.transports : [],
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp
+    });
+
+    return res.status(201).json({
+      success: true,
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp
+    });
+  } catch (error) {
+    console.error('Additional passkey verification error:', error);
+    if (error.code === 11000) {
+      return res.status(409).json({ error: 'This passkey is already registered' });
+    }
+    return res.status(400).json({ error: 'Additional passkey could not be verified' });
   }
 });
 
@@ -309,29 +431,24 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
     const { generateAuthenticationOptions } = await getWebAuthn();
     const { rpID } = getWebAuthnConfig();
 
-    // SecureDrive's current policy is local-device passkeys only. Platform
-    // credentials normally advertise the "internal" transport. Do not silently
-    // initiate hybrid/QR authentication for credentials registered elsewhere.
-    const localPasskeys = passkeys.filter(passkey =>
-      Array.isArray(passkey.transports) &&
-      passkey.transports.includes('internal')
-    );
-
-    if (!localPasskeys.length) {
-      return res.status(409).json({
-        error: 'No local-device passkey is registered for this account. Register a passkey on this device first.'
-      });
-    }
+    // Offer every credential registered to this account. Do not filter to
+    // `internal`: that would prevent the browser from offering synced or
+    // hybrid (phone/QR) authenticators. Omitting transport hints lets the
+    // browser select the transports supported by the current authenticator.
+    const mode = req.body.mode === 'hybrid' ? 'hybrid' : 'local';
 
     const options = await generateAuthenticationOptions({
       rpID,
-      allowCredentials: localPasskeys.map(passkey => ({
-        id: passkey.credentialId,
-        transports: ['internal']
+      allowCredentials: passkeys.map(passkey => ({
+        id: passkey.credentialId
       })),
       userVerification: 'required',
       timeout: 60000
     });
+
+    // WebAuthn Level 3 hints are preferences, not guarantees. Older browsers
+    // ignore this field and show their normal authenticator chooser.
+    options.hints = mode === 'hybrid' ? ['hybrid'] : ['client-device'];
 
     const challengeId = crypto.randomUUID();
 

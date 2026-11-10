@@ -1,0 +1,441 @@
+diff --git a/backend/models/PasskeyChallenge.js b/backend/models/PasskeyChallenge.js
+index 30fe193..df235ef 100644
+--- a/backend/models/PasskeyChallenge.js
++++ b/backend/models/PasskeyChallenge.js
+@@ -16,7 +16,7 @@ const passkeyChallengeSchema = new mongoose.Schema({
+ 
+   purpose: {
+     type: String,
+-    enum: ['register', 'login'],
++    enum: ['register', 'register-additional', 'login'],
+     required: true
+   },
+ 
+diff --git a/backend/routes/passkeyAuth.js b/backend/routes/passkeyAuth.js
+index 1a1f6a2..b994c07 100644
+--- a/backend/routes/passkeyAuth.js
++++ b/backend/routes/passkeyAuth.js
+@@ -109,12 +109,13 @@ router.post('/register/options', passkeyCeremonyLimiter, async (req, res) => {
+ 
+       attestationType: 'none',
+ 
++      // First credential is created on this device by default. Additional
++      // credentials can later be registered locally or through a phone QR flow.
++      preferredAuthenticatorType: 'localDevice',
+       authenticatorSelection: {
+-      authenticatorAttachment: 'platform',
+-      residentKey: 'required',
+-      userVerification: 'required'
+-    },
+-
++        residentKey: 'required',
++        userVerification: 'required'
++      },
+       timeout: 60000
+     });
+ 
+@@ -233,7 +234,7 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
+         publicKey: Buffer.from(credential.publicKey).toString('base64'),
+         webauthnUserID: challengeRecord.webauthnUserID,
+         counter: credential.counter,
+-        transports: credential.transports?.length ? credential.transports : ['internal'],
++        transports: credential.transports?.length ? credential.transports : [],
+         deviceType: credentialDeviceType,
+         backedUp: credentialBackedUp
+       });
+@@ -267,6 +268,127 @@ router.post('/register/verify', passkeyCeremonyLimiter, async (req, res) => {
+   }
+ });
+ 
++// ------------------------------------------------------------
++// ADD ANOTHER PASSKEY TO AN AUTHENTICATED ACCOUNT
++// These endpoints let an already-authenticated user add a local passkey
++// or register a passkey on a phone using the browser's hybrid/QR flow.
++// ------------------------------------------------------------
++router.post('/register/additional/options', auth, passkeyCeremonyLimiter, async (req, res) => {
++  try {
++    const user = await User.findById(req.user.userId);
++    if (!user || user.deletionPending || user.authMethod !== 'webauthn') {
++      return res.status(401).json({ error: 'Account cannot register another passkey' });
++    }
++
++    const passkeys = await Passkey.find({ user: user._id });
++    if (!passkeys.length || !user.webauthnUserID) {
++      return res.status(409).json({ error: 'The account has no valid primary passkey identity' });
++    }
++
++    const mode = req.body.mode === 'hybrid' ? 'hybrid' : 'local';
++    const { generateRegistrationOptions } = await getWebAuthn();
++    const { rpName, rpID } = getWebAuthnConfig();
++
++    const options = await generateRegistrationOptions({
++      rpName,
++      rpID,
++      userName: user.email,
++      userID: Buffer.from(user.webauthnUserID, 'base64url'),
++      attestationType: 'none',
++      excludeCredentials: passkeys.map(passkey => ({ id: passkey.credentialId })),
++      preferredAuthenticatorType: mode === 'hybrid' ? 'remoteDevice' : 'localDevice',
++      authenticatorSelection: {
++        residentKey: 'required',
++        userVerification: 'required'
++      },
++      timeout: 60000
++    });
++
++    const challengeId = crypto.randomUUID();
++    await PasskeyChallenge.create({
++      challengeId,
++      email: user.email,
++      purpose: 'register-additional',
++      challenge: options.challenge,
++      webauthnUserID: user.webauthnUserID,
++      expiresAt: challengeExpiry()
++    });
++
++    return res.json({ options, challengeId });
++  } catch (error) {
++    console.error('Additional passkey options error:', error);
++    return res.status(500).json({ error: 'Could not start additional passkey registration' });
++  }
++});
++
++router.post('/register/additional/verify', auth, passkeyCeremonyLimiter, async (req, res) => {
++  try {
++    const response = req.body.response;
++    const { challengeId } = req.body;
++    if (!response?.id || !challengeId) {
++      return res.status(400).json({ error: 'Invalid additional passkey registration request' });
++    }
++
++    const user = await User.findById(req.user.userId);
++    if (!user || user.deletionPending || user.authMethod !== 'webauthn') {
++      return res.status(401).json({ error: 'Account cannot register another passkey' });
++    }
++
++    const challengeRecord = await PasskeyChallenge.findOneAndDelete({
++      challengeId,
++      email: user.email,
++      purpose: 'register-additional',
++      expiresAt: { $gt: new Date() }
++    });
++    if (!challengeRecord) {
++      return res.status(401).json({ error: 'Passkey registration challenge expired or already used' });
++    }
++
++    const { verifyRegistrationResponse } = await getWebAuthn();
++    const { rpID, origin } = getWebAuthnConfig();
++    const verification = await verifyRegistrationResponse({
++      response,
++      expectedChallenge: challengeRecord.challenge,
++      expectedOrigin: origin,
++      expectedRPID: rpID,
++      requireUserVerification: true
++    });
++
++    if (!verification.verified || !verification.registrationInfo) {
++      return res.status(400).json({ error: 'Additional passkey verification failed' });
++    }
++
++    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
++    const existingCredential = await Passkey.findOne({ credentialId: credential.id });
++    if (existingCredential) {
++      return res.status(409).json({ error: 'This passkey is already registered' });
++    }
++
++    await Passkey.create({
++      user: user._id,
++      credentialId: credential.id,
++      publicKey: Buffer.from(credential.publicKey).toString('base64'),
++      webauthnUserID: challengeRecord.webauthnUserID,
++      counter: credential.counter,
++      transports: credential.transports?.length ? credential.transports : [],
++      deviceType: credentialDeviceType,
++      backedUp: credentialBackedUp
++    });
++
++    return res.status(201).json({
++      success: true,
++      deviceType: credentialDeviceType,
++      backedUp: credentialBackedUp
++    });
++  } catch (error) {
++    console.error('Additional passkey verification error:', error);
++    if (error.code === 11000) {
++      return res.status(409).json({ error: 'This passkey is already registered' });
++    }
++    return res.status(400).json({ error: 'Additional passkey could not be verified' });
++  }
++});
++
+ // ------------------------------------------------------------
+ // LOGIN: generate authentication options
+ // POST /api/auth/passkey/login/options
+@@ -309,30 +431,25 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
+     const { generateAuthenticationOptions } = await getWebAuthn();
+     const { rpID } = getWebAuthnConfig();
+ 
+-    // SecureDrive's current policy is local-device passkeys only. Platform
+-    // credentials normally advertise the "internal" transport. Do not silently
+-    // initiate hybrid/QR authentication for credentials registered elsewhere.
+-    const localPasskeys = passkeys.filter(passkey =>
+-      Array.isArray(passkey.transports) &&
+-      passkey.transports.includes('internal')
+-    );
+-
+-    if (!localPasskeys.length) {
+-      return res.status(409).json({
+-        error: 'No local-device passkey is registered for this account. Register a passkey on this device first.'
+-      });
+-    }
++    // Offer every credential registered to this account. Do not filter to
++    // `internal`: that would prevent the browser from offering synced or
++    // hybrid (phone/QR) authenticators. Omitting transport hints lets the
++    // browser select the transports supported by the current authenticator.
++    const mode = req.body.mode === 'hybrid' ? 'hybrid' : 'local';
+ 
+     const options = await generateAuthenticationOptions({
+       rpID,
+-      allowCredentials: localPasskeys.map(passkey => ({
+-        id: passkey.credentialId,
+-        transports: ['internal']
++      allowCredentials: passkeys.map(passkey => ({
++        id: passkey.credentialId
+       })),
+       userVerification: 'required',
+       timeout: 60000
+     });
+ 
++    // WebAuthn Level 3 hints are preferences, not guarantees. Older browsers
++    // ignore this field and show their normal authenticator chooser.
++    options.hints = mode === 'hybrid' ? ['hybrid'] : ['client-device'];
++
+     const challengeId = crypto.randomUUID();
+ 
+     await PasskeyChallenge.create({
+diff --git a/frontend/src/index.html b/frontend/src/index.html
+index af6b6de..887a6d1 100644
+--- a/frontend/src/index.html
++++ b/frontend/src/index.html
+@@ -48,9 +48,23 @@
+           type="button"
+           class="btn-secondary"
+           id="passkey-login-btn">
+-          Sign in with Passkey
++          Sign in with this device's passkey
+         </button>
+ 
++        <button
++          type="button"
++          class="btn-secondary"
++          id="passkey-hybrid-login-btn">
++          Sign in using another device (phone / QR)
++        </button>
++
++        <p class="helper-text">
++          On this device, use its fingerprint, face recognition or PIN.
++          On a different device, choose the phone / QR option and follow
++          the browser's passkey prompt. QR availability depends on your browser,
++          operating system and registered phone passkey.
++        </p>
++
+       </section>
+ 
+       <!-- FIRST-TIME ENCRYPTION SETUP -->
+@@ -130,8 +144,25 @@
+ 
+       </section>
+ 
++      <!-- Available after account authentication, before file-key unlock. -->
++      <section id="device-passkey-tools" style="display:none">
++        <hr>
++        <h3>Register another device</h3>
++        <p class="helper-text">
++          Add a passkey to this device, or use your phone to create a
++          cross-device passkey through the browser's QR flow.
++        </p>
++        <button type="button" class="btn-secondary" id="add-local-passkey-btn">
++          Add passkey on this device
++        </button>
++        <button type="button" class="btn-secondary" id="add-hybrid-passkey-btn">
++          Add passkey using phone / QR
++        </button>
++        <p id="device-passkey-message" class="error-msg" role="status"></p>
++      </section>
++
+       <p class="auth-note">
+-        Authentication uses a local-device WebAuthn passkey.
++        Authentication uses WebAuthn passkeys, including compatible synced and cross-device authenticators.
+         File encryption uses AES-256-GCM with a separate PBKDF2-derived key.
+         Your file-encryption password is never sent to the server.
+         After a page reload, unlock your files again with that password.
+diff --git a/frontend/src/js/passkeyAuth.js b/frontend/src/js/passkeyAuth.js
+index 87ae00f..251dfd2 100644
+--- a/frontend/src/js/passkeyAuth.js
++++ b/frontend/src/js/passkeyAuth.js
+@@ -51,7 +51,7 @@ function resetToPasskeyScreen() {
+       if ($(id)) $(id).value = '';
+     });
+ 
+-  ['passkey-message', 'setup-message', 'unlock-message'].forEach(clearMessage);
++  ['passkey-message', 'setup-message', 'unlock-message', 'device-passkey-message'].forEach(clearMessage);
+   showSection('passkey-section');
+   $('screen-title').textContent = 'Welcome to SecureDrive';
+   $('screen-subtitle').textContent = 'Secure, passwordless account access.';
+@@ -65,6 +65,14 @@ function showSection(sectionId) {
+   ].forEach(id => {
+     $(id).style.display = id === sectionId ? 'block' : 'none';
+   });
++
++  const deviceTools = $('device-passkey-tools');
++  if (deviceTools) {
++    deviceTools.style.display =
++      sectionId === 'encryption-setup' || sectionId === 'encryption-unlock'
++        ? 'block'
++        : 'none';
++  }
+ }
+ 
+ function setBusy(button, busy, busyText, normalText) {
+@@ -245,24 +253,30 @@ async function registerWithPasskey() {
+ // LOGIN
+ // --------------------------------------------------
+ 
+-async function loginWithPasskey() {
+-  const button = $('passkey-login-btn');
++async function loginWithPasskey(mode = 'local') {
++  const button = mode === 'hybrid'
++    ? $('passkey-hybrid-login-btn')
++    : $('passkey-login-btn');
+ 
+   try {
+     clearMessage('passkey-message');
+ 
+     const email = getEmail();
+ 
++    const idleLabel = mode === 'hybrid'
++      ? 'Sign in using another device (phone / QR)'
++      : "Sign in with this device's passkey";
++
+     setBusy(
+       button,
+       true,
+-      'Verifying passkey...',
+-      'Sign in with Passkey'
++      mode === 'hybrid' ? 'Waiting for phone...' : 'Verifying passkey...',
++      idleLabel
+     );
+ 
+     const optionsData = await post(
+       '/auth/passkey/login/options',
+-      { email }
++      { email, mode }
+     );
+ 
+     const authenticationResponse = await startAuthentication({
+@@ -314,7 +328,9 @@ async function loginWithPasskey() {
+   } catch (error) {
+     console.error(error);
+     const message = error.name === 'NotAllowedError'
+-      ? 'No local passkey was selected, or the request was cancelled. Use a browser and device where you registered a local passkey.'
++      ? (mode === 'hybrid'
++          ? 'Cross-device authentication was cancelled or is unavailable. Try a compatible browser and a phone that has a SecureDrive passkey registered.'
++          : 'No passkey was selected, or authentication was cancelled. Try your device passkey or choose the phone/another-device option.')
+       : (error.message || 'Passkey login failed.');
+     showMessage('passkey-message', message);
+   } finally {
+@@ -322,8 +338,69 @@ async function loginWithPasskey() {
+       button,
+       false,
+       '',
+-      'Sign in with Passkey'
++      mode === 'hybrid'
++        ? 'Sign in using another device (phone / QR)'
++        : "Sign in with this device's passkey"
++    );
++  }
++}
++
++// --------------------------------------------------
++// REGISTER AN ADDITIONAL PASSKEY
++// Use mode='local' for this device, or mode='hybrid' to ask the browser
++// to prefer a remote authenticator (typically a phone QR flow).
++// --------------------------------------------------
++async function registerAdditionalPasskey(mode = 'local') {
++  const button = mode === 'hybrid'
++    ? $('add-hybrid-passkey-btn')
++    : $('add-local-passkey-btn');
++
++  try {
++    clearMessage('device-passkey-message');
++
++    if (!sessionStorage.getItem('token')) {
++      throw new Error('Sign in again before adding another passkey.');
++    }
++
++    setBusy(button, true, 'Preparing...', mode === 'hybrid'
++      ? 'Add passkey using phone / QR'
++      : 'Add passkey on this device');
++
++    const optionsData = await post(
++      '/auth/passkey/register/additional/options',
++      { mode },
++      true
++    );
++
++    const registrationResponse = await startRegistration({
++      optionsJSON: optionsData.options
++    });
++
++    const result = await post(
++      '/auth/passkey/register/additional/verify',
++      {
++        response: registrationResponse,
++        challengeId: optionsData.challengeId
++      },
++      true
+     );
++
++    const message = result.backedUp
++      ? 'Additional passkey registered. Your credential provider reports that it is backed up/synced.'
++      : 'Additional passkey registered successfully.';
++    showMessage('device-passkey-message', message, false);
++  } catch (error) {
++    console.error(error);
++    const message = error.name === 'NotAllowedError'
++      ? (mode === 'hybrid'
++          ? 'Phone/QR passkey registration was cancelled or is not supported by this browser. Try a compatible browser and phone.'
++          : 'Passkey registration was cancelled or is unavailable on this device.')
++      : (error.message || 'Could not register another passkey.');
++    showMessage('device-passkey-message', message);
++  } finally {
++    setBusy(button, false, '', mode === 'hybrid'
++      ? 'Add passkey using phone / QR'
++      : 'Add passkey on this device');
+   }
+ }
+ 
+@@ -497,7 +574,22 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+   $('passkey-login-btn').addEventListener(
+     'click',
+-    loginWithPasskey
++    () => loginWithPasskey('local')
++  );
++
++  $('passkey-hybrid-login-btn').addEventListener(
++    'click',
++    () => loginWithPasskey('hybrid')
++  );
++
++  $('add-local-passkey-btn').addEventListener(
++    'click',
++    () => registerAdditionalPasskey('local')
++  );
++
++  $('add-hybrid-passkey-btn').addEventListener(
++    'click',
++    () => registerAdditionalPasskey('hybrid')
+   );
+ 
+   $('encryption-setup-btn').addEventListener(

@@ -92,6 +92,7 @@ app.get('/api/health', (req, res) => {
 
 // Protected routes — token required for everything below
 app.use('/api/files', auth, require('./routes/files'));
+app.use('/api/audit', auth, require('./routes/audit'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

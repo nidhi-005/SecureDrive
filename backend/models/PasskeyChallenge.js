@@ -16,7 +16,7 @@ const passkeyChallengeSchema = new mongoose.Schema({
 
   purpose: {
     type: String,
-    enum: ['register', 'login'],
+    enum: ['register', 'register-additional', 'login'],
     required: true
   },
 

@@ -11,7 +11,6 @@ import {
   deriveKeyFromPassword,
   generateMasterKey,
   generateSalt,
-  unwrapMasterKey,
   wrapMasterKey
 } from '../crypto.js';
 import {
@@ -23,6 +22,10 @@ import {
   signDidChallenge
 } from '../did/didIdentity.js';
 import { setMasterKey } from './keyStore.js';
+import {
+  MasterKeyRecoveryError,
+  unwrapMasterKeyWithRecovery
+} from './masterKeyRecovery.js';
 
 const $ = id => document.getElementById(id);
 let pendingEncryptionSetup = null;
@@ -169,12 +172,26 @@ async function handleLogin() {
     try {
       const salt = base64ToUint8Array(result.encryptionSalt);
       const derivedKey = await deriveKeyFromPassword(encryptionPassword, salt);
-      const masterKey = await unwrapMasterKey(result.wrappedMasterKey, result.masterKeyIV, derivedKey);
+      const { masterKey, repairError } = await unwrapMasterKeyWithRecovery(
+        result,
+        derivedKey
+      );
       await setMasterKey(masterKey, email);
+      if (repairError) {
+        window.alert(
+          'Your Master Key was recovered, but the active key could not be repaired. Contact support before signing out.'
+        );
+      }
       window.location.href = 'dashboard.html';
-    } catch {
-      sessionStorage.removeItem('token');
-      throw new Error('DID authentication succeeded, but the file encryption password is incorrect.');
+    } catch (error) {
+      if (!(error instanceof MasterKeyRecoveryError)) {
+        sessionStorage.removeItem('token');
+      }
+      throw new Error(
+        error instanceof MasterKeyRecoveryError
+          ? error.message
+          : 'DID authentication succeeded, but the file encryption password is incorrect.'
+      );
     }
   } catch (error) {
     showError('login-error', error.message || 'Login failed.');

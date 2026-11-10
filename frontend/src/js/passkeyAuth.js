@@ -8,13 +8,16 @@ import {
   deriveKeyFromPassword,
   generateMasterKey,
   generateSalt,
-  unwrapMasterKey,
   wrapMasterKey,
   bytesToBase64,
   base64ToBytes
 } from '../crypto.js';
 
 import { setMasterKey } from './keyStore.js';
+import {
+  MasterKeyRecoveryError,
+  unwrapMasterKeyWithRecovery
+} from './masterKeyRecovery.js';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || 'http://localhost:3000/api').replace(/\/$/, '');
 
@@ -51,7 +54,7 @@ function resetToPasskeyScreen() {
       if ($(id)) $(id).value = '';
     });
 
-  ['passkey-message', 'setup-message', 'unlock-message'].forEach(clearMessage);
+  ['passkey-message', 'setup-message', 'unlock-message', 'device-passkey-message'].forEach(clearMessage);
   showSection('passkey-section');
   $('screen-title').textContent = 'Welcome to SecureDrive';
   $('screen-subtitle').textContent = 'Secure, passwordless account access.';
@@ -65,6 +68,14 @@ function showSection(sectionId) {
   ].forEach(id => {
     $(id).style.display = id === sectionId ? 'block' : 'none';
   });
+
+  const deviceTools = $('device-passkey-tools');
+  if (deviceTools) {
+    deviceTools.style.display =
+      sectionId === 'encryption-setup' || sectionId === 'encryption-unlock'
+        ? 'block'
+        : 'none';
+  }
 }
 
 function setBusy(button, busy, busyText, normalText) {
@@ -245,24 +256,30 @@ async function registerWithPasskey() {
 // LOGIN
 // --------------------------------------------------
 
-async function loginWithPasskey() {
-  const button = $('passkey-login-btn');
+async function loginWithPasskey(mode = 'local') {
+  const button = mode === 'hybrid'
+    ? $('passkey-hybrid-login-btn')
+    : $('passkey-login-btn');
 
   try {
     clearMessage('passkey-message');
 
     const email = getEmail();
 
+    const idleLabel = mode === 'hybrid'
+      ? 'Sign in using another device (phone / QR)'
+      : "Sign in with this device's passkey";
+
     setBusy(
       button,
       true,
-      'Verifying passkey...',
-      'Sign in with Passkey'
+      mode === 'hybrid' ? 'Waiting for phone...' : 'Verifying passkey...',
+      idleLabel
     );
 
     const optionsData = await post(
       '/auth/passkey/login/options',
-      { email }
+      { email, mode }
     );
 
     const authenticationResponse = await startAuthentication({
@@ -314,7 +331,9 @@ async function loginWithPasskey() {
   } catch (error) {
     console.error(error);
     const message = error.name === 'NotAllowedError'
-      ? 'No local passkey was selected, or the request was cancelled. Use a browser and device where you registered a local passkey.'
+      ? (mode === 'hybrid'
+          ? 'Cross-device authentication was cancelled or is unavailable. Try a compatible browser and a phone that has a SecureDrive passkey registered.'
+          : 'No passkey was selected, or authentication was cancelled. Try your device passkey or choose the phone/another-device option.')
       : (error.message || 'Passkey login failed.');
     showMessage('passkey-message', message);
   } finally {
@@ -322,8 +341,69 @@ async function loginWithPasskey() {
       button,
       false,
       '',
-      'Sign in with Passkey'
+      mode === 'hybrid'
+        ? 'Sign in using another device (phone / QR)'
+        : "Sign in with this device's passkey"
     );
+  }
+}
+
+// --------------------------------------------------
+// REGISTER AN ADDITIONAL PASSKEY
+// Use mode='local' for this device, or mode='hybrid' to ask the browser
+// to prefer a remote authenticator (typically a phone QR flow).
+// --------------------------------------------------
+async function registerAdditionalPasskey(mode = 'local') {
+  const button = mode === 'hybrid'
+    ? $('add-hybrid-passkey-btn')
+    : $('add-local-passkey-btn');
+
+  try {
+    clearMessage('device-passkey-message');
+
+    if (!sessionStorage.getItem('token')) {
+      throw new Error('Sign in again before adding another passkey.');
+    }
+
+    setBusy(button, true, 'Preparing...', mode === 'hybrid'
+      ? 'Add passkey using phone / QR'
+      : 'Add passkey on this device');
+
+    const optionsData = await post(
+      '/auth/passkey/register/additional/options',
+      { mode },
+      true
+    );
+
+    const registrationResponse = await startRegistration({
+      optionsJSON: optionsData.options
+    });
+
+    const result = await post(
+      '/auth/passkey/register/additional/verify',
+      {
+        response: registrationResponse,
+        challengeId: optionsData.challengeId
+      },
+      true
+    );
+
+    const message = result.backedUp
+      ? 'Additional passkey registered. Your credential provider reports that it is backed up/synced.'
+      : 'Additional passkey registered successfully.';
+    showMessage('device-passkey-message', message, false);
+  } catch (error) {
+    console.error(error);
+    const message = error.name === 'NotAllowedError'
+      ? (mode === 'hybrid'
+          ? 'Phone/QR passkey registration was cancelled or is not supported by this browser. Try a compatible browser and phone.'
+          : 'Passkey registration was cancelled or is unavailable on this device.')
+      : (error.message || 'Could not register another passkey.');
+    showMessage('device-passkey-message', message);
+  } finally {
+    setBusy(button, false, '', mode === 'hybrid'
+      ? 'Add passkey using phone / QR'
+      : 'Add passkey on this device');
   }
 }
 
@@ -456,9 +536,8 @@ async function unlockEncryption() {
       salt
     );
 
-    const masterKey = await unwrapMasterKey(
-      encryptionMetadata.wrappedMasterKey,
-      encryptionMetadata.masterKeyIV,
+    const { masterKey, repairError } = await unwrapMasterKeyWithRecovery(
+      encryptionMetadata,
       derivedKey
     );
 
@@ -468,12 +547,20 @@ async function unlockEncryption() {
 
     await openDashboard();
 
+    if (repairError) {
+      window.alert(
+        'Your Master Key was recovered and your files are unlocked, but the active key could not be repaired. Contact support before signing out.'
+      );
+    }
+
   } catch (error) {
     console.error(error);
 
     showMessage(
       'unlock-message',
-      'Could not unlock your files. Check your encryption password.'
+      error instanceof MasterKeyRecoveryError
+        ? error.message
+        : 'Could not unlock your files. Check your encryption password.'
     );
   } finally {
     setBusy(
@@ -497,7 +584,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('passkey-login-btn').addEventListener(
     'click',
-    loginWithPasskey
+    () => loginWithPasskey('local')
+  );
+
+  $('passkey-hybrid-login-btn').addEventListener(
+    'click',
+    () => loginWithPasskey('hybrid')
+  );
+
+  $('add-local-passkey-btn').addEventListener(
+    'click',
+    () => registerAdditionalPasskey('local')
+  );
+
+  $('add-hybrid-passkey-btn').addEventListener(
+    'click',
+    () => registerAdditionalPasskey('hybrid')
   );
 
   $('encryption-setup-btn').addEventListener(
