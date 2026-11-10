@@ -4,6 +4,7 @@ const router = express.Router();
 
 const AuditEvent = require('../models/AuditEvent');
 const AuditBatch = require('../models/AuditBatch');
+const { createAuditEvent } = require('../services/auditService');
 
 const {
   getAuditEvent,
@@ -52,6 +53,8 @@ function buildFilters(query) {
     'ACCOUNT_DELETED',
     'LOGIN_SUCCESS',
     'LOGIN_FAILED',
+    'PASSKEY_LOGIN_FAILED',
+    'ENCRYPTION_UNLOCK_FAILED',
     'FILE_UPLOADED',
     'FILE_DELETED',
     'FILE_CEK_REPAIRED',
@@ -107,6 +110,7 @@ async function getDashboardStats(match, days) {
     daily,
     outcomes,
     failedLogins,
+    encryptionUnlockFailures,
     integrityMismatches,
     recoveryFailures,
     anchoring,
@@ -157,7 +161,12 @@ async function getDashboardStats(match, days) {
 
     AuditEvent.countDocuments({
       ...rangeMatch,
-      eventType: 'LOGIN_FAILED'
+      eventType: 'PASSKEY_LOGIN_FAILED'
+    }),
+
+    AuditEvent.countDocuments({
+      ...rangeMatch,
+      eventType: 'ENCRYPTION_UNLOCK_FAILED'
     }),
 
     AuditEvent.countDocuments({
@@ -206,7 +215,7 @@ async function getDashboardStats(match, days) {
       {
         $match: {
           ...rangeMatch,
-          eventType: { $in: ['LOGIN_SUCCESS', 'LOGIN_FAILED'] }
+          eventType: { $in: ['LOGIN_SUCCESS', 'PASSKEY_LOGIN_FAILED'] }
         }
       },
       {
@@ -297,17 +306,17 @@ async function getDashboardStats(match, days) {
   );
 
   const anchored = statusMap.ANCHORED || 0;
-  const pending = statusMap.PENDING || 0;
-  const batched = statusMap.BATCHED || 0;
+  // BATCHED events have not been confirmed on-chain yet, so count them as pending.
+  const pending = (statusMap.PENDING || 0) + (statusMap.BATCHED || 0);
   const failed = statusMap.FAILED || 0;
-  const anchoringTotal = anchored + pending + batched + failed;
+  const anchoringTotal = anchored + pending + failed;
 
   const loginMap = Object.fromEntries(
     loginCounts.map(item => [item._id, item.count])
   );
 
   const successfulLogins = loginMap.LOGIN_SUCCESS || 0;
-  const failedLoginCount = loginMap.LOGIN_FAILED || 0;
+  const failedLoginCount = loginMap.PASSKEY_LOGIN_FAILED || 0;
   const totalLogins = successfulLogins + failedLoginCount;
 
   const anchorData = anchorMetrics[0] || {};
@@ -327,6 +336,7 @@ async function getDashboardStats(match, days) {
     outcomes,
     security: {
       failedLogins,
+      encryptionUnlockFailures,
       integrityMismatches,
       recoveryFailures,
       successfulLogins,
@@ -340,7 +350,6 @@ async function getDashboardStats(match, days) {
     anchoring: {
       anchored,
       pending,
-      batched,
       failed,
       total: anchoringTotal,
       successRate: anchoringTotal
@@ -509,6 +518,28 @@ router.get('/admin/stats', async (req, res) => {
     return res.status(500).json({
       error: 'Could not retrieve admin statistics'
     });
+  }
+});
+
+// Record a failed file-encryption password attempt without sending the
+// password or derived key to the server.
+router.post('/encryption-unlock-failed', async (req, res) => {
+  if (!requireAccountRef(req, res)) return;
+
+  try {
+    await createAuditEvent({
+      accountRef: req.user.accountRef,
+      eventType: 'ENCRYPTION_UNLOCK_FAILED',
+      initiator: 'USER',
+      severity: 'MEDIUM',
+      outcome: 'FAILURE',
+      details: { method: 'FILE_ENCRYPTION_PASSWORD' }
+    });
+
+    return res.status(201).json({ recorded: true });
+  } catch (error) {
+    console.error('Encryption unlock failure audit failed:', error.message);
+    return res.status(500).json({ error: 'Could not record unlock failure' });
   }
 });
 

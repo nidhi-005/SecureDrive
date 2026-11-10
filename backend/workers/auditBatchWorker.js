@@ -5,6 +5,7 @@ const AuditEvent = require('../models/AuditEvent');
 const AuditBatch = require('../models/AuditBatch');
 const { buildMerkleTree } = require('../services/merkleService');
 const { anchorAuditBatch } = require('../services/blockchainService');
+const { MERKLE_BATCH_EVENT_TYPES } = require('../services/auditService');
 
 const BATCH_SIZE = 25;
 const POLL_INTERVAL_MS = 15000;
@@ -32,6 +33,7 @@ async function createBatch() {
 
       const events = await AuditEvent.find({
         blockchainStatus: 'PENDING',
+        eventType: { $in: MERKLE_BATCH_EVENT_TYPES },
         batchId: null,
         $or: [
           { nextRetryAt: null },

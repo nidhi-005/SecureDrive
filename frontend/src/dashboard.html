@@ -100,9 +100,13 @@
           </div>
 
           <div class="audit-insights-grid">
-            <div class="audit-insight-card hidden">
-              <span>Failed logins</span>
+            <div class="audit-insight-card">
+              <span>Passkey login failures</span>
               <strong id="auditFailedLogins">0</strong>
+            </div>
+            <div class="audit-insight-card">
+              <span>File encryption password failures</span>
+              <strong id="auditEncryptionUnlockFailures">0</strong>
             </div>
             <div class="audit-insight-card hidden">
               <span>Integrity mismatches</span>
@@ -117,13 +121,13 @@
               <strong id="auditAnchorSuccessRate">0%</strong>
             </div>
 
-            <div class="audit-insight-card hidden">
-              <span>Failed login rate</span>
+            <div class="audit-insight-card">
+              <span>Passkey login failure rate</span>
               <strong id="auditFailedLoginRate">0%</strong>
             </div>
 
             <div class="audit-insight-card">
-              <span>Suspicious events</span>
+              <span>Suspicious events <span class="audit-info" tabindex="0" role="img" aria-label="Suspicious event definition" title="Counts HIGH and CRITICAL events, such as key security changes, failed recovery, or integrity mismatches. Repeated failed logins are MEDIUM and shown separately.">i</span></span>
               <strong id="auditSuspiciousEvents">0</strong>
             </div>
 
@@ -147,7 +151,7 @@
             </section>
 
             <section class="audit-chart-card">
-              <h3>Severity distribution</h3>
+              <h3>Severity distribution <span class="audit-info" tabindex="0" role="img" aria-label="Severity definitions" title="Low: signup, successful login, upload, verified integrity. Medium: failed passkey login or encryption unlock, file deletion, deletion request. High: key repair. Critical: integrity mismatch, recovery failure, completed account deletion.">i</span></h3>
               <div class="audit-chart-container">
                 <canvas id="auditSeverityChart"></canvas>
               </div>
@@ -182,7 +186,7 @@
             </section>
 
             <section class="audit-chart-card admin-only hidden" id="incidentAccountsCard">
-              <h3>Accounts with security incidents</h3>
+              <h3>Accounts with security incidents <span class="audit-info" tabindex="0" role="img" aria-label="Security incident definition" title="Counts HIGH and CRITICAL events per account during the selected period. Examples include key security changes, failed recovery, and integrity mismatches.">i</span></h3>
               <div class="audit-chart-container">
                 <canvas id="auditIncidentAccountChart"></canvas>
               </div>
@@ -197,7 +201,8 @@
               <option value="ACCOUNT_DELETION_CANCELLED">Deletion Cancelled</option>
               <option value="ACCOUNT_DELETED">Account Deleted</option>
               <option value="LOGIN_SUCCESS">Login Success</option>
-              <option value="LOGIN_FAILED">Login Failed</option>
+              <option value="PASSKEY_LOGIN_FAILED">Passkey Login Failed</option>
+              <option value="ENCRYPTION_UNLOCK_FAILED">Encryption Password Failed</option>
               <option value="FILE_UPLOADED">File Uploaded</option>
               <option value="FILE_DELETED">File Deleted</option>
               <option value="FILE_CEK_REPAIRED">File Key Repaired</option>
@@ -220,7 +225,6 @@
               <option value="PENDING">Pending</option>
               <option value="ANCHORED">Anchored</option>
               <option value="FAILED">Failed</option>
-              <option value="BATCHED">Batched</option>
             </select>
 
             <input id="adminAccountFilter" type="text" placeholder="Account reference (admin)"

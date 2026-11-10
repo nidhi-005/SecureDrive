@@ -7,6 +7,7 @@ const Passkey = require('../models/Passkey');
 const PasskeyChallenge = require('../models/PasskeyChallenge');
 const auth = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
+const { createAuditEvent } = require('../services/auditService');
 
 const passkeyCeremonyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -19,6 +20,25 @@ const passkeyCeremonyLimiter = rateLimit({
 const router = express.Router();
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+
+async function recordLoginAudit(user, outcome, reason = 'authentication_failed') {
+  if (!user?.accountRef) return;
+  try {
+    await createAuditEvent({
+      accountRef: user.accountRef,
+      eventType: outcome === 'SUCCESS' ? 'LOGIN_SUCCESS' : 'PASSKEY_LOGIN_FAILED',
+      initiator: 'USER',
+      severity: outcome === 'SUCCESS' ? 'LOW' : 'MEDIUM',
+      outcome,
+      details: {
+        method: 'PASSKEY',
+        ...(outcome === 'FAILURE' ? { reason } : {})
+      }
+    });
+  } catch (error) {
+    console.error('Passkey audit event creation failed:', error.message);
+  }
+}
 
 // SimpleWebAuthn is loaded dynamically because the package is ESM.
 let webauthnPromise;
@@ -51,6 +71,28 @@ function normalizeEmail(value) {
 
 function validEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isWithinDeletionGracePeriod(user, now = new Date()) {
+  return Boolean(
+    user?.deletionPending &&
+    user.deletionStatus === 'PENDING' &&
+    user.deletionScheduledFor &&
+    user.deletionScheduledFor > now
+  );
+}
+
+async function recordDeletionCancellation(user) {
+  try {
+    await createAuditEvent({
+      accountRef: user.accountRef,
+      eventType: 'ACCOUNT_DELETION_CANCELLED',
+      initiator: 'USER',
+      severity: 'LOW'
+    });
+  } catch (error) {
+    console.error('Deletion cancellation audit event failed:', error.message);
+  }
 }
 
 function issueToken(user) {
@@ -412,7 +454,8 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
       });
     }
 
-    if (user.deletionPending) {
+    if (user.deletionPending && !isWithinDeletionGracePeriod(user)) {
+      await recordLoginAudit(user, 'FAILURE', 'account_not_available');
       return res.status(401).json({
         error: 'Invalid account or passkey'
       });
@@ -423,6 +466,7 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
     });
 
     if (!passkeys.length) {
+      await recordLoginAudit(user, 'FAILURE', 'no_registered_passkey');
       return res.status(401).json({
         error: 'No passkey is registered for this account.'
       });
@@ -431,17 +475,27 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
     const { generateAuthenticationOptions } = await getWebAuthn();
     const { rpID } = getWebAuthnConfig();
 
-    // Offer every credential registered to this account. Do not filter to
-    // `internal`: that would prevent the browser from offering synced or
-    // hybrid (phone/QR) authenticators. Omitting transport hints lets the
-    // browser select the transports supported by the current authenticator.
+    // Offer every credential registered to this account, including synced
+    // passkeys. Local-device requests include stored transport hints below;
+    // hybrid requests use discoverable credentials for the QR handoff.
     const mode = req.body.mode === 'hybrid' ? 'hybrid' : 'local';
 
+    // All SecureDrive credentials are discoverable. Leaving allowCredentials
+    // unset for hybrid login lets the phone select the matching passkey from
+    // its own credential store instead of relying on this device's transport
+    // metadata during the QR handoff.
     const options = await generateAuthenticationOptions({
       rpID,
-      allowCredentials: passkeys.map(passkey => ({
-        id: passkey.credentialId
-      })),
+      ...(mode === 'local'
+        ? {
+          allowCredentials: passkeys.map(passkey => ({
+            id: passkey.credentialId,
+            ...(passkey.transports?.length
+              ? { transports: passkey.transports }
+              : {})
+          }))
+        }
+        : {}),
       userVerification: 'required',
       timeout: 60000
     });
@@ -480,12 +534,33 @@ router.post('/login/options', passkeyCeremonyLimiter, async (req, res) => {
 // ------------------------------------------------------------
 
 router.post('/login/verify', passkeyCeremonyLimiter, async (req, res) => {
+  let email = '';
+  let attemptedUser;
+  let failureRecorded = false;
+
+  const recordFailure = async reason => {
+    if (failureRecorded) return;
+    failureRecorded = true;
+
+    try {
+      const user = attemptedUser || (
+        validEmail(email)
+          ? await User.findOne({ email }).select('accountRef')
+          : null
+      );
+      await recordLoginAudit(user, 'FAILURE', reason);
+    } catch (auditError) {
+      console.error('Passkey login failure audit lookup failed:', auditError.message);
+    }
+  };
+
   try {
-    const email = normalizeEmail(req.body.email);
+    email = normalizeEmail(req.body.email);
     const response = req.body.response;
     const { challengeId } = req.body;
 
     if (!validEmail(email) || !response?.id || !challengeId) {
+      await recordFailure('invalid_authentication_request');
       return res.status(400).json({
         error: 'Invalid authentication request'
       });
@@ -500,14 +575,17 @@ router.post('/login/verify', passkeyCeremonyLimiter, async (req, res) => {
     });
 
     if (!challengeRecord) {
+      await recordFailure('challenge_expired_or_reused');
       return res.status(401).json({
         error: 'Authentication challenge expired or already used'
       });
     }
 
     const user = await User.findOne({ email });
+    attemptedUser = user;
 
-    if (!user || user.deletionPending) {
+    if (!user || (user.deletionPending && !isWithinDeletionGracePeriod(user))) {
+      await recordFailure('invalid_account_or_passkey');
       return res.status(401).json({
         error: 'Invalid account or passkey'
       });
@@ -519,6 +597,7 @@ router.post('/login/verify', passkeyCeremonyLimiter, async (req, res) => {
     });
 
     if (!passkey) {
+      await recordFailure('credential_not_registered');
       return res.status(401).json({
         error: 'Invalid account or passkey'
       });
@@ -547,15 +626,49 @@ router.post('/login/verify', passkeyCeremonyLimiter, async (req, res) => {
     });
 
     if (!verification.verified) {
+      await recordFailure('assertion_verification_failed');
       return res.status(401).json({
         error: 'Passkey authentication failed'
       });
+    }
+
+    if (user.deletionPending) {
+      const restoredUser = await User.findOneAndUpdate(
+        {
+          _id: user._id,
+          deletionPending: true,
+          deletionStatus: 'PENDING',
+          deletionScheduledFor: { $gt: new Date() }
+        },
+        {
+          $set: {
+            deletionPending: false,
+            deletionStatus: 'NONE',
+            deletionRequestedAt: null,
+            deletionScheduledFor: null,
+            deletionRequestEventId: null,
+            deletionLeaseId: null,
+            deletionLeaseUntil: null,
+            deletionAttempts: 0
+          }
+        },
+        { new: true }
+      );
+
+      if (!restoredUser) {
+        return res.status(403).json({
+          error: 'The deletion grace period has expired'
+        });
+      }
+
+      await recordDeletionCancellation(user);
     }
 
     passkey.counter = verification.authenticationInfo.newCounter;
     passkey.lastUsedAt = new Date();
 
     await passkey.save();
+    await recordLoginAudit(user, 'SUCCESS');
 
     const token = issueToken(user);
 
@@ -587,6 +700,7 @@ return res.json({
     : 'encryption-setup'
 });
   } catch (error) {
+    await recordFailure('assertion_verification_failed');
     console.error('Passkey login verification error:', error);
 
     return res.status(401).json({

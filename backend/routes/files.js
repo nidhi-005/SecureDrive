@@ -55,6 +55,35 @@ async function recordAudit(data) {
   }
 }
 
+function anchorFileIntegrityInBackground(file) {
+  setImmediate(async () => {
+    try {
+      const result = await anchorIntegrity({
+        fileId: file.blockchainFileId,
+        version: file.integrityVersion,
+        commitment: file.integrityCommitment,
+        recordType: RECORD_TYPE.FILE
+      });
+
+      await File.updateOne(
+        { _id: file._id, integrityStatus: 'PENDING' },
+        {
+          $set: {
+            integrityStatus: 'ANCHORED',
+            blockchainTxHash: result.transactionHash,
+            blockchainAnchoredAt: new Date()
+          }
+        }
+      );
+    } catch (error) {
+      console.error(
+        'Blockchain anchoring unavailable. File remains pending:',
+        error.message
+      );
+    }
+  });
+}
+
 // ─── UPLOAD ──────────────────────────────────────────
 router.post('/upload', upload.single('file'), async (req, res) => {
   let uploadedS3Key = null;
@@ -155,43 +184,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     await newFile.save();
 
 
-    // Submit blockchain transaction (best-effort).
-    let anchorResult = null;
+    // The encrypted file, recovery data, and integrity commitment are safely
+    // stored. Start blockchain anchoring without holding the upload response.
+    anchorFileIntegrityInBackground(newFile);
 
-    try {
-      anchorResult = await anchorIntegrity({
-        fileId: blockchainFileId,
-        version: integrityVersion,
-        commitment,
-        recordType: RECORD_TYPE.FILE
-      });
-
-      // Mark ANCHORED only after successful confirmation.
-      newFile.integrityStatus = 'ANCHORED';
-      newFile.blockchainTxHash = anchorResult.transactionHash;
-      newFile.blockchainAnchoredAt = new Date();
-
-      await newFile.save();
-
-      console.log('File successfully uploaded and anchored.');
-
-    } catch (blockchainError) {
-      // File is already safely stored in S3 and MongoDB.
-      // Keep integrity status as PENDING.
-      console.error(
-        'Blockchain anchoring unavailable. File remains pending:',
-        blockchainError.message
-      );
-
-      newFile.integrityStatus = 'PENDING';
-      await newFile.save();
-    }
-
-    // Return successful upload response because file storage succeeded.
     return res.status(201).json({
-      message: anchorResult
-        ? 'File uploaded and integrity anchored'
-        : 'File uploaded. Blockchain integrity anchoring is pending',
+      message: 'File uploaded. Integrity anchoring is pending',
 
       fileId: newFile._id,
 

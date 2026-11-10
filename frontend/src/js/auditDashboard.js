@@ -85,7 +85,14 @@ function renderAuditCharts(stats) {
         datasets: [{
           data: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'].map(
             level => stats.severity.find(x => x._id === level)?.count || 0
-          )
+          ),
+          backgroundColor: [
+            '#1eb5fb', // LOW - Blue
+            '#ffeb3b', // MEDIUM - Yellow
+            '#ff9800', // HIGH - Orange
+            '#f44336'  // CRITICAL - Red
+          ],
+          borderWidth: 1
         }]
       }
     },
@@ -105,12 +112,11 @@ function renderAuditCharts(stats) {
     auditBlockchainChart: {
       type: 'doughnut',
       data: {
-        labels: ['Anchored', 'Pending', 'Batched', 'Failed'],
+        labels: ['Anchored', 'Pending', 'Failed'],
         datasets: [{
           data: [
             stats.anchoring.anchored,
             stats.anchoring.pending,
-            stats.anchoring.batched,
             stats.anchoring.failed
           ]
         }]
@@ -205,6 +211,7 @@ function renderAuditCharts(stats) {
 
   const insights = {
     auditFailedLogins: stats.security.failedLogins,
+    auditEncryptionUnlockFailures: stats.security.encryptionUnlockFailures,
     auditIntegrityMismatches: stats.security.integrityMismatches,
     auditRecoveryFailures: stats.security.recoveryFailures,
 
@@ -272,16 +279,24 @@ async function loadAuditStats() {
 
 function renderAuditEvent(event) {
   const eventId = escapeHtml(event.eventId);
-  const status = escapeHtml(event.blockchainStatus);
+  const status = escapeHtml(
+    event.blockchainStatus === 'BATCHED'
+      ? 'PENDING'
+      : event.blockchainStatus
+  );
   const severity = escapeHtml(event.severity);
   const transactionHash = event.transactionHash
     ? escapeHtml(event.transactionHash)
     : 'Not available';
+  const eventLabel = {
+    PASSKEY_LOGIN_FAILED: 'Passkey login failed',
+    ENCRYPTION_UNLOCK_FAILED: 'File encryption password failed'
+  }[event.eventType] || event.eventType.replace(/_/g, ' ');
 
   return `
     <article class="audit-event-card">
       <div class="audit-event-top">
-        <h3>${escapeHtml(event.eventType)}</h3>
+        <h3>${escapeHtml(eventLabel)}</h3>
         <span class="audit-status status-${status}">${status}</span>
       </div>
       <div class="audit-event-meta">

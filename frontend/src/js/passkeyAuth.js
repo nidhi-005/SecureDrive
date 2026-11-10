@@ -556,6 +556,19 @@ async function unlockEncryption() {
   } catch (error) {
     console.error(error);
 
+    const passwordRejected =
+      error?.name === 'OperationError' ||
+      (error instanceof MasterKeyRecoveryError &&
+        error.message.includes('Check your encryption password'));
+
+    if (passwordRejected && sessionStorage.getItem('token')) {
+      try {
+        await post('/audit/encryption-unlock-failed', {}, true);
+      } catch (auditError) {
+        console.error('Could not record encryption password failure:', auditError);
+      }
+    }
+
     showMessage(
       'unlock-message',
       error instanceof MasterKeyRecoveryError

@@ -1,6 +1,14 @@
 const crypto = require('crypto');
 const AuditEvent = require('../models/AuditEvent');
 
+// These high-volume activity records are committed together in Merkle batches.
+const MERKLE_BATCH_EVENT_TYPES = [
+  'LOGIN_SUCCESS',
+  'PASSKEY_LOGIN_FAILED',
+  'ENCRYPTION_UNLOCK_FAILED',
+  'FILE_UPLOADED'
+];
+
 const EVENT_CONFIG = {
   ACCOUNT_CREATED: ['ACCOUNT_LIFECYCLE', 'LOW', 'SUCCESS'],
   ACCOUNT_DELETION_REQUESTED: ['ACCOUNT_LIFECYCLE', 'MEDIUM', 'WARNING'],
@@ -8,7 +16,9 @@ const EVENT_CONFIG = {
   ACCOUNT_DELETED: ['ACCOUNT_LIFECYCLE', 'MEDIUM', 'SUCCESS'],
 
   LOGIN_SUCCESS: ['AUTHENTICATION', 'LOW', 'SUCCESS'],
+  PASSKEY_LOGIN_FAILED: ['AUTHENTICATION', 'MEDIUM', 'FAILURE'],
   LOGIN_FAILED: ['AUTHENTICATION', 'MEDIUM', 'FAILURE'],
+  ENCRYPTION_UNLOCK_FAILED: ['KEY_MANAGEMENT', 'MEDIUM', 'FAILURE'],
 
   FILE_UPLOADED: ['FILE_OPERATIONS', 'LOW', 'SUCCESS'],
   FILE_DELETED: ['FILE_OPERATIONS', 'LOW', 'SUCCESS'],
@@ -93,5 +103,6 @@ async function createAuditEvent({
 }
 
 module.exports = {
-  createAuditEvent
+  createAuditEvent,
+  MERKLE_BATCH_EVENT_TYPES
 };

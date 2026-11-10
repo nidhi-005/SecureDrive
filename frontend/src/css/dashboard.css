@@ -1155,6 +1155,27 @@ input:focus-visible {
   margin-bottom: 20px;
 }
 
+.audit-info {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1;
+  cursor: help;
+  vertical-align: 1px;
+}
+
+.audit-info:focus-visible {
+  outline: 2px solid #1eb5fb;
+  outline-offset: 2px;
+}
+
 .audit-chart-container {
   height: 280px;
   min-width: 0;

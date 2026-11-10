@@ -119,6 +119,16 @@ const auditEventSchema = new mongoose.Schema({
     default: 0
   },
 
+  anchorLeaseId: {
+    type: String,
+    default: null
+  },
+
+  anchorLeaseUntil: {
+    type: Date,
+    default: null
+  },
+
   nextRetryAt: {
     type: Date,
     default: Date.now

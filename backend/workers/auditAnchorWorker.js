@@ -5,6 +5,7 @@ const {
   anchorAuditEvent,
   getAuditEvent
 } = require('../services/blockchainService');
+const { MERKLE_BATCH_EVENT_TYPES } = require('../services/auditService');
 
 const POLL_INTERVAL_MS = 10000;
 const LEASE_DURATION_MS = 5 * 60 * 1000;
@@ -240,6 +241,7 @@ async function claimNextEvent() {
 
   const event = await AuditEvent.findOneAndUpdate(
     {
+      eventType: { $nin: MERKLE_BATCH_EVENT_TYPES },
       $and: [
         {
           $or: [

@@ -40,7 +40,7 @@ app.use((req, res, next) => {
     "default-src 'self'; " +
     "script-src 'self' 'unsafe-inline'; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "connect-src 'self' https://securedrive-mmls.onrender.com; " +
+    "connect-src https://securedrive-mmls.onrender.com; " +
     "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com"
   );
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -103,6 +103,7 @@ mongoose.connect(process.env.MONGO_URI)
     console.log("Connected DB:", mongoose.connection.name);
 
     startDeletionWorker();
+    startAuditAnchorWorker();
     startAuditBatchWorker();
   })
   .catch(err => {
